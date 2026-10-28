@@ -17,7 +17,10 @@ input:focus, select:focus, button:focus-visible { outline: 1px solid var(--vscod
 .header .envs { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
 .env-chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 8px; border: 1px solid var(--vscode-panel-border); border-radius: 10px; }
 .env-name { font-weight: 600; }
-.banner { margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
+.banner { margin-bottom: 12px; padding: 8px 12px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-left-width: 3px; }
+.banner.info { border-left-color: var(--vscode-notificationsInfoIcon-foreground); }
+.banner.warn { border-left-color: var(--vscode-notificationsWarningIcon-foreground); }
+.banner a, .banner .change-env { color: var(--vscode-descriptionForeground); }
 .banner-title { font-weight: 600; margin-bottom: 6px; }
 .change { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 .change-env { color: var(--vscode-descriptionForeground); }
@@ -31,8 +34,17 @@ td.key { font-family: var(--vscode-editor-font-family); overflow: hidden; text-o
 td.value { font-family: var(--vscode-editor-font-family); }
 td { overflow: hidden; }
 .field { width: 100%; max-width: 32em; min-width: 0; box-sizing: border-box; }
-.picker { margin-bottom: 12px; }
-.picker .field { max-width: 24em; }
+.picker { position: relative; margin-bottom: 12px; max-width: 24em; }
+.picker-control { display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border, transparent); padding: 3px 6px; }
+.picker-control:hover { background: var(--vscode-dropdown-background); }
+.picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-drop { position: absolute; z-index: 10; top: 100%; left: 0; right: 0; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); box-shadow: 0 2px 8px var(--vscode-widget-shadow); padding: 4px; }
+.picker-drop .field { max-width: none; margin-bottom: 4px; }
+.picker-list { max-height: 300px; overflow-y: auto; }
+.picker-item { padding: 3px 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-item.selected { font-weight: 600; }
+.picker-item.hi { background: var(--vscode-list-hoverBackground); }
+.picker-empty { padding: 3px 6px; color: var(--vscode-descriptionForeground); }
 .value-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .value-wrap .field { flex: 1 1 auto; min-width: 6em; }
 .value-wrap .badge { flex: none; margin-left: 0; white-space: nowrap; }

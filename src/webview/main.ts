@@ -69,34 +69,102 @@ function render(): void {
       try { n.setSelectionRange(kept.a, kept.b); } catch { /* input type without selection */ }
     }
   }
+  if (pickerOpen && !kept) app.querySelector<HTMLInputElement>('input[data-ss="picker-search"]')?.focus();
   rendering = false;
 }
 
+// Combobox state lives at module level so a re-render (state message) keeps the dropdown open.
+let pickerOpen = false;
+let pickerQuery = '';
+let pickerHi = 0;
+const sortedProjects = (): ProjectView[] => [...projects].sort((x, y) => x.name.localeCompare(y.name));
+const matches = (): ProjectView[] => sortedProjects().filter((p) => p.name.toLowerCase().includes(pickerQuery.toLowerCase()));
+// One document-level listener (not per render): click outside the picker closes it.
+document.addEventListener('mousedown', (e) => {
+  if (pickerOpen && !(e.target instanceof Node && app.querySelector('.picker')?.contains(e.target))) { pickerOpen = false; render(); }
+});
+
 function renderPicker(active: ProjectView): HTMLElement {
   const wrap = el('div', 'picker');
+  const ctl = el('button', 'picker-control');
+  ctl.type = 'button';
+  ctl.setAttribute('role', 'combobox');
+  ctl.setAttribute('aria-haspopup', 'listbox');
+  ctl.setAttribute('aria-expanded', String(pickerOpen));
+  ctl.setAttribute('aria-controls', 'ss-projects');
+  ctl.append(el('span', 'picker-name', active.name), el('span', 'picker-caret', '▾'));
+  const open = (): void => {
+    pickerOpen = true;
+    pickerQuery = '';
+    pickerHi = Math.max(0, matches().findIndex((p) => p.root === tab));
+    render();
+  };
+  const close = (refocus: boolean): void => {
+    pickerOpen = false;
+    render();
+    if (refocus) app.querySelector<HTMLElement>('.picker-control')?.focus();
+  };
+  ctl.addEventListener('click', () => (pickerOpen ? close(false) : open()));
+  ctl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); if (!pickerOpen) open(); }
+  });
+  wrap.append(ctl);
+  if (!pickerOpen) return wrap;
+
+  const drop = el('div', 'picker-drop');
   const input = field(el('input'));
   input.type = 'text';
-  input.setAttribute('list', 'ss-projects');
   input.placeholder = t('Search project');
-  input.dataset.ss = 'picker';
-  input.defaultValue = active.name;
-  input.value = active.name;
-  const list = el('datalist');
+  input.dataset.ss = 'picker-search';
+  input.setAttribute('aria-controls', 'ss-projects');
+  input.value = pickerQuery;
+  const list = el('div', 'picker-list');
   list.id = 'ss-projects';
-  for (const p of [...projects].sort((a, b) => a.name.localeCompare(b.name))) {
-    const o = el('option');
-    o.value = p.name;
-    list.append(o);
-  }
-  input.addEventListener('focus', () => input.select());
-  input.addEventListener('change', () => {
-    const hit = projects.find((p) => p.name === input.value);
-    if (hit && hit.root !== tab) { tab = hit.root; save(); render(); }
+  list.setAttribute('role', 'listbox');
+  const choose = (p: ProjectView): void => {
+    pickerOpen = false;
+    if (p.root !== tab) { tab = p.root; save(); }
+    render();
+    app.querySelector<HTMLElement>('.picker-control')?.focus();
+  };
+  const paint = (): void => {
+    const hits = matches();
+    pickerHi = Math.min(pickerHi, Math.max(0, hits.length - 1));
+    list.replaceChildren();
+    if (!hits.length) list.append(el('div', 'picker-empty', t('No projects found')));
+    hits.forEach((p, i) => {
+      const sel = p.root === tab;
+      const o = el('div', 'picker-item' + (sel ? ' selected' : '') + (i === pickerHi ? ' hi' : ''), (sel ? '✓ ' : '') + p.name);
+      o.setAttribute('role', 'option');
+      o.setAttribute('aria-selected', String(sel));
+      o.addEventListener('mouseover', () => {
+        if (pickerHi === i) return;
+        pickerHi = i;
+        list.querySelector('.hi')?.classList.remove('hi');
+        o.classList.add('hi');
+      });
+      o.addEventListener('click', () => choose(p));
+      list.append(o);
+    });
+    list.querySelector('.hi')?.scrollIntoView?.({ block: 'nearest' });
+  };
+  input.addEventListener('input', () => { pickerQuery = input.value; pickerHi = 0; paint(); });
+  input.addEventListener('keydown', (e) => {
+    const hits = matches();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (hits.length) { pickerHi = (pickerHi + (e.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length; paint(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hits[pickerHi]) choose(hits[pickerHi]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close(true);
+    }
   });
-  input.addEventListener('blur', () => {
-    if (!rendering && !projects.some((p) => p.name === input.value)) input.value = (projects.find((p) => p.root === tab) ?? active).name;
-  });
-  wrap.append(input, list);
+  paint();
+  drop.append(input, list);
+  wrap.append(drop);
   return wrap;
 }
 
@@ -117,7 +185,7 @@ function renderProject(v: ProjectView): HTMLElement {
   const p = v.project;
   const envs = p.schema.environments;
   box.append(renderHeader(v, envs));
-  if (v.draft) box.append(el('div', 'banner', t('Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.')
+  if (v.draft) box.append(el('div', 'banner info', t('Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.')
     .replace('{0}', p.schema.target).replace('{1}', envs[0])));
   if (v.pending?.changes.length) box.append(renderPending(v));
 
@@ -178,7 +246,7 @@ function renderHeader(v: ProjectView, envs: string[]): HTMLElement {
 
 function renderPending(v: ProjectView): HTMLElement {
   const pending = v.pending!;
-  const box = el('div', 'banner');
+  const box = el('div', 'banner warn');
   box.append(el('div', 'banner-title', t('Changes to review')));
   const rows: { key: string; cb: HTMLInputElement }[] = [];
   for (const c of pending.changes) {

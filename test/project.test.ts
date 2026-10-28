@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { addKey, emptyProject } from '../src/core/model';
-import { ensureGitignore, init, isTrackedByGit, load, readTarget, targetPath } from '../src/project';
+import { ensureGitignore, init, isTrackedByGit, load, readTarget, targetPath, writeTarget } from '../src/project';
 
 test('init creates files and gitignore entry once', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ss-'));
@@ -48,4 +48,16 @@ test('targetPath rejects escaping and absolute targets; readTarget works', async
     assert.throws(() => targetPath(dir, bad), /target/i, target);
     await assert.rejects(readTarget(dir, bad));
   }
+});
+
+test('writeTarget refuses symlinks and writes regular files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ss-'));
+  const outside = join(await mkdtemp(join(tmpdir(), 'ss-out-')), 'victim');
+  await writeFile(outside, 'safe');
+  await symlink(outside, join(dir, '.env'));
+  await assert.rejects(writeTarget(dir, emptyProject(), 'pwn'), /symbolic link/);
+  assert.equal(await readFile(outside, 'utf8'), 'safe');
+  const dir2 = await mkdtemp(join(tmpdir(), 'ss-'));
+  await writeTarget(dir2, emptyProject(), 'A=1\n');
+  assert.equal(await readFile(join(dir2, '.env'), 'utf8'), 'A=1\n');
 });

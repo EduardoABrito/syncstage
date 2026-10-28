@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { emptyProject, validate, type Project, type Schema, type Values } from './core/model';
 
@@ -60,7 +60,7 @@ export async function init(root: string, p: Project = emptyProject()): Promise<P
 
 export function isTrackedByGit(root: string, relPath: string): Promise<boolean> {
   return new Promise(res => {
-    execFile('git', ['ls-files', '--error-unmatch', relPath], { cwd: root }, err => res(!err));
+    execFile('git', ['ls-files', '--error-unmatch', '--', relPath], { cwd: root }, err => res(!err));
   });
 }
 
@@ -77,4 +77,13 @@ export function targetPath(root: string, p: Project): string {
 
 export async function readTarget(root: string, p: Project): Promise<string> {
   return (await readOpt(targetPath(root, p))) ?? '';
+}
+
+/** Write the target file; refuses symlinks (a repo could ship `.env -> ~/.bashrc`). */
+export async function writeTarget(root: string, p: Project, content: string): Promise<void> {
+  const file = targetPath(root, p);
+  try {
+    if ((await lstat(file)).isSymbolicLink()) throw new Error(`Refusing to write through symbolic link: ${p.schema.target}`);
+  } catch (e) { if (!isEnoent(e)) throw e; }
+  await writeFile(file, content);
 }

@@ -22,5 +22,13 @@
     "@types/vscode": "1.90.0",
     "@vscode/vsce": "^4.0.0",
     "typescript": "^5.9.3"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "syncstage.openPanel",
+        "title": "%command.openPanel%"
+      }
+    ]
   }
 }

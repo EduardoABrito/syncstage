@@ -6,7 +6,7 @@
     "rootDir": ".",
     "outDir": "out",
     "skipLibCheck": true,
-    "types": ["node", "vscode"]
+    "esModuleInterop": true
   },
   "include": ["src", "test"],
   "exclude": ["src/webview"]

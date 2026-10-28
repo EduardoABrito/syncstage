@@ -11,6 +11,8 @@ export interface ProjectView {
 export type ToWebview = { type: 'state'; projects: ProjectView[]; strings: Record<string, string> };
 export type FromWebview =
   | { type: 'ready' }
+  | { type: 'exportWorkspace' }
+  | { type: 'importWorkspace' } // workspace-wide: no root
   | { type: 'init' | 'import' | 'generate' | 'addEnv' | 'exportConfig' | 'importConfig'; root: string }
   | { type: 'renameEnv' | 'removeEnv'; root: string; env: string }
   | { type: 'select'; root: string; key: string; env: string }

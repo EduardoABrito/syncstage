@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
-import { exportConfig, mergeConfig, parseConfig } from './core/config';
+import { Config, exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, workspaceKeys } from './core/config';
 import { Change, acceptedChanges, applyChanges, importDiff, manualDiff } from './core/diff';
 import {
   Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
@@ -219,41 +219,118 @@ export function activate(ctx: vscode.ExtensionContext): void {
     await importContent(root, p, await readFile(uris[0].fsPath, 'utf8'), env);
   }
 
+  const MAX_CONFIG_BYTES = 10 * 1024 * 1024; // untrusted file: refuse before JSON.parse
+
+  async function readJson(path: string): Promise<unknown> {
+    if ((await stat(path)).size > MAX_CONFIG_BYTES) throw new Error('File too large');
+    return JSON.parse(await readFile(path, 'utf8'));
+  }
+
+  /** asks for the structure/values choice; undefined = cancelled */
+  async function pickExport(title: string): Promise<{ withValues: boolean } | undefined> {
+    const withValues = t('With values (includes secrets)');
+    const pick = await vscode.window.showQuickPick([withValues, t('Structure only (no values)')], { placeHolder: title });
+    return pick ? { withValues: pick === withValues } : undefined;
+  }
+
+  /** secrets headed for a file inside a folder that git would not ignore need an explicit yes; false = cancelled */
+  async function confirmSecretsPath(dirs: string[], file: string): Promise<boolean> {
+    const dir = dirs.find(d => file.startsWith(d + sep));
+    if (dir === undefined || await isIgnoredByGit(dir, file)) return true;
+    const yes = t('Save anyway');
+    const a = await vscode.window.showWarningMessage(
+      t('{0} is not gitignored — secret values could be committed. Save anyway?', file.slice(dir.length + 1)), { modal: true }, yes);
+    return a === yes;
+  }
+
   async function doExportConfig(root: string): Promise<void> {
     const s = states.get(root);
     const p = drafts.get(root) ?? (s?.status === 'ok' ? s.project : undefined); // a draft is exported as-is, never persisted
     if (!p) throw new Error(t('Project is not initialized or its syncstage files are invalid'));
-    const withValues = t('With values (includes secrets)');
-    const pick = await vscode.window.showQuickPick([withValues, t('Structure only (no values)')], { placeHolder: t('Export config') });
+    const pick = await pickExport(t('Export config'));
     if (!pick) return;
     const uri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(join(root, 'syncstage-config.json')), filters: { JSON: ['json'] }, title: t('Export config'),
     });
     if (!uri) return;
-    if (pick === withValues && uri.fsPath.startsWith(root + sep) && !(await isIgnoredByGit(root, uri.fsPath))) {
-      const yes = t('Save anyway');
-      const a = await vscode.window.showWarningMessage(
-        t('{0} is not gitignored — secret values could be committed. Save anyway?', uri.fsPath.slice(root.length + 1)), { modal: true }, yes);
-      if (a !== yes) return;
-    }
-    await vscode.workspace.fs.writeFile(uri, Buffer.from(exportConfig(p, pick === withValues), 'utf8'));
+    if (pick.withValues && !(await confirmSecretsPath([root], uri.fsPath))) return;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(exportConfig(p, pick.withValues), 'utf8'));
     void vscode.window.showInformationMessage(t('Config exported {0}', uri.fsPath));
   }
 
+  /** merge a validated config into a project that is already persisted */
+  async function applyConfig(root: string, cfg: Config): Promise<Change[]> {
+    const merged = mergeConfig(await okProject(root), cfg);
+    await finishImport(root, merged.project, merged.conflicts);
+    return merged.conflicts;
+  }
+
   async function doImportConfig(root: string): Promise<void> {
-    const p = await okProject(root);
     const uris = await vscode.window.showOpenDialog({
       canSelectMany: false, defaultUri: vscode.Uri.file(root), filters: { JSON: ['json'] }, title: t('Import config'),
     });
     if (!uris?.length) return;
-    let merged: ReturnType<typeof mergeConfig>;
+    let cfg: Config;
     try {
-      merged = mergeConfig(p, parseConfig(JSON.parse(await readFile(uris[0].fsPath, 'utf8'))));
+      cfg = parseConfig(await readJson(uris[0].fsPath));
     } catch (e) {
       void vscode.window.showErrorMessage(t('Invalid syncstage config: {0}', errMsg(e)));
       return;
     }
-    await finishImport(root, merged.project, merged.conflicts);
+    await applyConfig(root, cfg);
+  }
+
+  async function doExportWorkspace(): Promise<void> {
+    const keys = workspaceKeys(projects.map(x => ({ root: x.root, rel: x.name })));
+    const items = views().flatMap(v => (v.project ? [{ key: keys.get(v.root) as string, project: v.project }] : [])); // ok + drafts
+    if (!items.length) throw new Error(t('No projects found'));
+    const pick = await pickExport(t('Export workspace'));
+    if (!pick) return;
+    const first = folders()[0]?.uri.fsPath;
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: first ? vscode.Uri.file(join(first, 'syncstage-workspace.json')) : undefined,
+      filters: { JSON: ['json'] }, title: t('Export workspace'),
+    });
+    if (!uri) return;
+    if (pick.withValues && !(await confirmSecretsPath(folders().map(f => f.uri.fsPath), uri.fsPath))) return;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(exportWorkspace(items, pick.withValues), 'utf8'));
+    void vscode.window.showInformationMessage(t('Workspace config exported to {0} ({1} projects)', uri.fsPath, items.length));
+  }
+
+  async function doImportWorkspace(): Promise<void> {
+    const first = folders()[0]?.uri;
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false, defaultUri: first, filters: { JSON: ['json'] }, title: t('Import workspace'),
+    });
+    if (!uris?.length) return;
+    let entries: ReturnType<typeof parseWorkspaceConfig>;
+    try {
+      entries = parseWorkspaceConfig(await readJson(uris[0].fsPath));
+    } catch (e) {
+      void vscode.window.showErrorMessage(t('Invalid syncstage config: {0}', errMsg(e)));
+      return;
+    }
+    const { matched, skipped } = matchWorkspace(entries.map(e => e.key), projects.map(x => ({ root: x.root, rel: x.name })));
+    const reasons: Record<string, string> = {
+      'not found': t('not found'), ambiguous: t('ambiguous'), cancelled: t('cancelled'), invalid: t('invalid project'),
+    };
+    const skips = skipped.map(x => ({ key: x.key, reason: reasons[x.reason] }));
+    const review: string[] = [];
+    let done = 0;
+    for (const { key, config } of entries) {
+      const root = matched.get(key);
+      if (root === undefined) continue;
+      try {
+        if (!(await mutable(root))) { skips.push({ key, reason: reasons.cancelled }); continue; } // per-project gate
+        if ((await applyConfig(root, config)).length) review.push(projects.find(x => x.root === root)?.name ?? key);
+        done++;
+      } catch (e) {
+        skips.push({ key, reason: `${reasons.invalid}: ${errMsg(e)}` });
+      }
+    }
+    const list = skips.map(x => `${x.key} (${x.reason})`).join(', ');
+    const msg = skips.length ? t('Imported {0} projects. Skipped: {1}', done, list) : t('Imported {0} projects.', done);
+    void vscode.window.showInformationMessage(review.length ? `${msg} ${t('Review changes in: {0}', review.join(', '))}` : msg);
   }
 
   async function doInit(root: string): Promise<void> {
@@ -282,6 +359,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   async function handle(m: FromWebview): Promise<void> {
     if (m.type === 'ready') { panel.post(); return; }
+    if (m.type === 'exportWorkspace') return doExportWorkspace(); // read-only, no root
+    if (m.type === 'importWorkspace') return doImportWorkspace(); // each project goes through mutable()
     if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
     if (m.type === 'exportConfig') return doExportConfig(m.root); // read-only: must not persist a draft

@@ -46,5 +46,15 @@
   "Change target": "Trocar destino",
   "New target file": "Novo arquivo de destino",
   "Unknown project folder": "Pasta de projeto desconhecida",
-  "Invalid message from panel": "Mensagem inválida do painel"
+  "Invalid message from panel": "Mensagem inválida do painel",
+  "Export workspace": "Exportar workspace",
+  "Import workspace": "Importar workspace",
+  "Workspace config exported to {0} ({1} projects)": "Config do workspace exportada para {0} ({1} projetos)",
+  "Imported {0} projects. Skipped: {1}": "{0} projetos importados. Ignorados: {1}",
+  "Imported {0} projects.": "{0} projetos importados.",
+  "Review changes in: {0}": "Revise as alterações em: {0}",
+  "not found": "não encontrado",
+  "ambiguous": "ambíguo",
+  "cancelled": "cancelado",
+  "invalid project": "projeto inválido"
 }

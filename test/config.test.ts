@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addEnv, addKey, emptyProject, selectEnv, setKeyValues } from '../src/core/model';
-import { exportConfig, mergeConfig, parseConfig } from '../src/core/config';
+import { exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, workspaceKeys } from '../src/core/config';
 
 const sample = () => {
   let p = addEnv(emptyProject(), 'prod');
@@ -116,4 +116,77 @@ test('parseConfig: size limits and null selected/values', () => {
   assert.throws(() => parseConfig({ ...base, environments: Array.from({ length: 101 }, (_, i) => `e${i}`), selected: {}, values: {} }), /Too many environments/);
   bad({ selected: null });
   bad({ values: null });
+});
+
+const P = (root: string, rel: string) => ({ root, rel });
+const ws = [P('/a/wfe-admin-api', 'wfe-admin-api'), P('/a/Admin/api', 'Admin/api'), P('/a/Shop/api', 'Shop/api'), P('/a/web', 'web')];
+
+test('workspaceKeys: unique basename, else rel only for duplicates', () => {
+  const k = workspaceKeys(ws);
+  assert.equal(k.get('/a/wfe-admin-api'), 'wfe-admin-api');
+  assert.equal(k.get('/a/web'), 'web');
+  assert.equal(k.get('/a/Admin/api'), 'Admin/api');
+  assert.equal(k.get('/a/Shop/api'), 'Shop/api');
+});
+
+test('matchWorkspace: exact rel, unique basename, ambiguous, not found', () => {
+  const r = matchWorkspace(['Admin/api', 'web', 'api', 'ghost', 'x/web'], ws);
+  assert.equal(r.matched.get('Admin/api'), '/a/Admin/api');
+  assert.equal(r.matched.get('web'), '/a/web');
+  assert.equal(r.matched.get('x/web'), undefined); // same root already taken by 'web'
+  assert.deepEqual(r.skipped, [
+    { key: 'api', reason: 'ambiguous' }, { key: 'ghost', reason: 'not found' }, { key: 'x/web', reason: 'ambiguous' }]);
+});
+
+test('matchWorkspace: renamed parent folder still matches by basename', () => {
+  const r = matchWorkspace(['Old/wfe-admin-api'], ws);
+  assert.equal(r.matched.get('Old/wfe-admin-api'), '/a/wfe-admin-api');
+});
+
+test('matchWorkspace: exact rel wins over a fuzzy claim on the same root', () => {
+  const r = matchWorkspace(['x/web', 'web'], ws);
+  assert.equal(r.matched.get('web'), '/a/web');
+  assert.deepEqual(r.skipped, [{ key: 'x/web', reason: 'ambiguous' }]);
+});
+
+const body = (o: object = {}) => ({ environments: ['dev'], keys: ['A'], selected: {}, values: { A: { dev: '1' } }, ...o });
+const wsFile = (workspace: unknown, extra: object = {}) => ({ syncstage: 1, workspace, ...extra });
+
+test('parseWorkspaceConfig: valid', () => {
+  const r = parseWorkspaceConfig(wsFile({ api: body() }));
+  assert.equal(r.length, 1);
+  assert.equal(r[0].key, 'api');
+  assert.deepEqual(r[0].config.keys, ['A']);
+});
+
+test('parseWorkspaceConfig: rejects bad input', () => {
+  assert.throws(() => parseWorkspaceConfig(null));
+  assert.throws(() => parseWorkspaceConfig({ syncstage: 2, workspace: {} }));
+  assert.throws(() => parseWorkspaceConfig({ workspace: {} }));
+  assert.throws(() => parseWorkspaceConfig(wsFile([])));
+  assert.throws(() => parseWorkspaceConfig(wsFile('x')));
+  assert.throws(() => parseWorkspaceConfig(JSON.parse('{"syncstage":1,"workspace":{"__proto__":{}}}')));
+  assert.throws(() => parseWorkspaceConfig(wsFile({ toString: body() })));
+  assert.throws(() => parseWorkspaceConfig(wsFile({ '': body() })));
+  assert.throws(() => parseWorkspaceConfig(wsFile({ 'a\0b': body() })));
+  assert.throws(() => parseWorkspaceConfig(wsFile({ api: body({ keys: ['bad key!'] }) })));
+});
+
+test('parseWorkspaceConfig: caps entries at 200', () => {
+  const mk = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, body()]));
+  assert.equal(parseWorkspaceConfig(wsFile(mk(200))).length, 200);
+  assert.throws(() => parseWorkspaceConfig(wsFile(mk(201))));
+});
+
+test('workspace round trip: export 2 projects, parse, match all', () => {
+  const projects = [P('/r/one', 'one'), P('/r/two', 'two')];
+  const keys = workspaceKeys(projects);
+  const out = exportWorkspace([
+    { key: keys.get('/r/one') as string, project: sample() }, { key: keys.get('/r/two') as string, project: emptyProject() }], true);
+  const parsed = parseWorkspaceConfig(JSON.parse(out));
+  const m = matchWorkspace(parsed.map(e => e.key), projects);
+  assert.equal(m.matched.size, 2);
+  assert.equal(m.skipped.length, 0);
+  assert.deepEqual(parsed[0].config.keys, sample().schema.keys);
+  assert.equal(JSON.parse(exportWorkspace([{ key: 'one', project: sample() }], false)).workspace.one.values, undefined);
 });

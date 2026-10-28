@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import type { Change } from './diff';
 import { Project, Schema, Values, addEnv, addKey, defaultEnv, setKeyValues, validate } from './model';
 
@@ -68,4 +69,66 @@ export function mergeConfig(p: Project, cfg: Config): { project: Project; confli
     }
   }
   return { project, conflicts };
+}
+
+// ---- workspace-level file: { syncstage: 1, workspace: { <folder name>: <per-project body> } } ----
+
+const MAX_PROJECTS = 200;
+export interface WsProject { root: string; rel: string }
+export type SkipReason = 'not found' | 'ambiguous';
+
+/** Entry key per project: its folder name when unique among projects, else its relative path. */
+export function workspaceKeys(projects: WsProject[]): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const p of projects) count.set(basename(p.root), (count.get(basename(p.root)) ?? 0) + 1);
+  return new Map(projects.map(p => [p.root, (count.get(basename(p.root)) ?? 0) > 1 ? p.rel : basename(p.root)]));
+}
+
+/** Maps file entries onto projects: exact rel first, then unique folder name. A root is claimed once. */
+export function matchWorkspace(entryKeys: string[], projects: WsProject[]):
+  { matched: Map<string, string>; skipped: { key: string; reason: SkipReason }[] } {
+  const matched = new Map<string, string>();
+  const claimed = new Set<string>();
+  for (const k of entryKeys) {
+    const hit = projects.find(p => p.rel === k && !claimed.has(p.root));
+    if (hit) { matched.set(k, hit.root); claimed.add(hit.root); }
+  }
+  const skipped: { key: string; reason: SkipReason }[] = [];
+  for (const k of entryKeys) {
+    if (matched.has(k)) continue;
+    const name = k.split(/[\\/]/).pop() as string;
+    const cands = projects.filter(p => basename(p.root) === name);
+    if (cands.length === 0) skipped.push({ key: k, reason: 'not found' });
+    else if (cands.length > 1 || claimed.has(cands[0].root)) skipped.push({ key: k, reason: 'ambiguous' });
+    else { matched.set(k, cands[0].root); claimed.add(cands[0].root); }
+  }
+  return { matched, skipped };
+}
+
+/** One file for several projects; each body is exactly exportConfig's output minus the version tag. */
+export function exportWorkspace(items: { key: string; project: Project }[], withValues: boolean): string {
+  const workspace: Record<string, unknown> = {};
+  for (const { key, project } of items) {
+    const { syncstage: _v, ...rest } = JSON.parse(exportConfig(project, withValues)) as Record<string, unknown>;
+    Object.defineProperty(workspace, key, { value: rest, enumerable: true, writable: true, configurable: true }); // key may be "__proto__"-like
+  }
+  return JSON.stringify({ syncstage: 1, workspace }, null, 2) + '\n';
+}
+
+/** Validates an untrusted workspace file; every body goes through parseConfig. */
+export function parseWorkspaceConfig(raw: unknown): { key: string; config: Config }[] {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('Not a syncstage workspace config');
+  const r = raw as Record<string, unknown>;
+  if (r.syncstage !== 1) throw new Error('Unsupported or missing "syncstage" version');
+  const w = r.workspace;
+  if (typeof w !== 'object' || w === null || Array.isArray(w)) throw new Error('Missing "workspace" object');
+  const keys = Object.keys(w);
+  if (keys.length > MAX_PROJECTS) throw new Error(`Too many projects (max ${MAX_PROJECTS})`);
+  return keys.map(key => {
+    if (key === '' || key.includes('\0') || key in Object.prototype) throw new Error(`Invalid project name: "${key.replace('\0', '')}"`);
+    const body = (w as Record<string, unknown>)[key];
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new Error(`Invalid config for "${key}"`);
+    try { return { key, config: parseConfig({ ...body, syncstage: 1 }) }; }
+    catch (e) { throw new Error(`"${key}": ${e instanceof Error ? e.message : String(e)}`); }
+  });
 }

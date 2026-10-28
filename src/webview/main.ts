@@ -56,6 +56,7 @@ function render(): void {
     ? { id: f.dataset.ss, value: f.value !== f.defaultValue ? f.value : undefined, a: f.selectionStart, b: f.selectionEnd } : undefined;
   rendering = true;
   app.replaceChildren();
+  if (!projects.length) pickerOpen = false;
   if (projects.length) {
     if (!projects.some((p) => p.root === tab)) tab = projects[0].root;
     const active = projects.find((p) => p.root === tab) as ProjectView;
@@ -69,7 +70,6 @@ function render(): void {
       try { n.setSelectionRange(kept.a, kept.b); } catch { /* input type without selection */ }
     }
   }
-  if (pickerOpen && !kept) app.querySelector<HTMLInputElement>('input[data-ss="picker-search"]')?.focus();
   rendering = false;
 }
 
@@ -81,7 +81,12 @@ const sortedProjects = (): ProjectView[] => [...projects].sort((x, y) => x.name.
 const matches = (): ProjectView[] => sortedProjects().filter((p) => p.name.toLowerCase().includes(pickerQuery.toLowerCase()));
 // One document-level listener (not per render): click outside the picker closes it.
 document.addEventListener('mousedown', (e) => {
-  if (pickerOpen && !(e.target instanceof Node && app.querySelector('.picker')?.contains(e.target))) { pickerOpen = false; render(); }
+  if (pickerOpen && !(e.target instanceof Node && app.querySelector('.picker')?.contains(e.target))) {
+    // no render(): it would detach the element under the cursor and swallow this click
+    pickerOpen = false;
+    app.querySelector('.picker-drop')?.remove();
+    app.querySelector('.picker-control')?.setAttribute('aria-expanded', 'false');
+  }
 });
 
 function renderPicker(active: ProjectView): HTMLElement {
@@ -301,7 +306,7 @@ function renderRow(v: ProjectView, key: string, sel: string, byEnv: Record<strin
   input.addEventListener('blur', commit);
   wrap.append(input);
   if (v.project!.values.unregistered.includes(key)) wrap.append(el('span', 'badge warn', '⚠ ' + t('not registered')));
-  if (v.missing.includes(key)) wrap.append(el('span', 'badge', t('missing in {0}').replace('{0}', sel)));
+  if (v.missing.includes(key)) wrap.append(el('span', 'badge info', t('missing in {0}').replace('{0}', sel)));
   val.append(wrap);
   tr.append(val);
   const envTd = el('td');

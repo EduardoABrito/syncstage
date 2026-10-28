@@ -20,7 +20,6 @@ input:focus, select:focus, button:focus-visible { outline: 1px solid var(--vscod
 .banner { margin-bottom: 12px; padding: 8px 12px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-left-width: 3px; }
 .banner.info { border-left-color: var(--vscode-notificationsInfoIcon-foreground); }
 .banner.warn { border-left-color: var(--vscode-notificationsWarningIcon-foreground); }
-.banner a, .banner .change-env { color: var(--vscode-descriptionForeground); }
 .banner-title { font-weight: 600; margin-bottom: 6px; }
 .change { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 .change-env { color: var(--vscode-descriptionForeground); }
@@ -49,7 +48,8 @@ td { overflow: hidden; }
 .value-wrap .field { flex: 1 1 auto; min-width: 6em; }
 .value-wrap .badge { flex: none; margin-left: 0; white-space: nowrap; }
 .badge { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 0.85em; font-family: var(--vscode-font-family); background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
-.badge.warn { background: var(--vscode-inputValidation-warningBackground); color: var(--vscode-editorWarning-foreground); border: 1px solid var(--vscode-inputValidation-warningBorder); }
+.badge.warn, .badge.info { background: transparent; color: var(--vscode-foreground); border: 1px solid var(--vscode-notificationsInfoIcon-foreground); }
+.badge.warn { border-color: var(--vscode-notificationsWarningIcon-foreground); }
 tr.editor td { background: var(--vscode-editorWidget-background); }
 .editor-field { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .editor-field input { flex: 1; }

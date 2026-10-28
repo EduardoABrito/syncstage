@@ -194,6 +194,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   /** every project save goes through here so our own writes never look external; `record` pushes the pre-save state onto history */
   async function persist(root: string, p: Project, record = false): Promise<void> {
     const before = record ? await load(root) : undefined;
+    if (before?.status === 'ok' && lastSaved.has(root) && lastSaved.get(root) !== JSON.stringify(before.project)) hist(root).clear(); // external edit not yet refreshed
     await save(root, p);
     const after = await load(root); // canonical form, as refresh will see it
     if (after.status === 'ok') lastSaved.set(root, JSON.stringify(after.project));
@@ -219,13 +220,13 @@ export function activate(ctx: vscode.ExtensionContext): void {
   async function finishImport(root: string, project: Project, conflicts: Change[]): Promise<void> {
     // every import path ends here: never save/commit over a manual review the user hasn't resolved
     if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first'));
-    await persist(root, project, true);
     if (conflicts.length) {
+      await persist(root, project, true);
       pending.set(root, { kind: 'import', changes: conflicts });
       await refresh();
     } else {
       pending.delete(root);
-      await commit(root, project);
+      await commit(root, project); // commit persists
     }
   }
 
@@ -382,10 +383,21 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const p = await okProject(root);
     if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first'));
     const h = hist(root);
-    const prev = dir === 'undo' ? h.undo(p) : h.redo(p);
+    if (lastSaved.has(root) && lastSaved.get(root) !== JSON.stringify(p)) { // changed on disk behind our back
+      h.clear();
+      void vscode.window.showInformationMessage(t('Project changed outside syncstage — history cleared'));
+      await refresh();
+      return;
+    }
+    const restored = dir === 'undo' ? h.undo(p) : h.redo(p);
+    // keep the current target: an old one could bypass the git-tracked gate and revert the user's choice
+    const prev = restored && { ...restored, schema: { ...restored.schema, target: p.schema.target } };
     if (!prev) { void vscode.window.showInformationMessage(dir === 'undo' ? t('Nothing to undo') : t('Nothing to redo')); return; }
     pending.delete(root); // import review refers to the replaced state
-    await persist(root, prev);
+    try { await persist(root, prev); } catch (e) {
+      if (dir === 'undo') h.redo(prev); else h.undo(prev); // roll the step back
+      throw e;
+    }
     await syncTarget(root, prev);
     await refresh();
   }

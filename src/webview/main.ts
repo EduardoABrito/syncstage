@@ -398,8 +398,9 @@ document.addEventListener('keydown', (e) => {
   if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
   const k = e.key.toLowerCase();
   const type = k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'y' && e.ctrlKey && !e.shiftKey ? 'redo' : undefined;
-  if (!type || !tab) return;
+  const v = projects.find((p) => p.root === tab);
+  if (!type || !v || v.status !== 'ok' || v.draft || !(type === 'undo' ? v.canUndo : v.canRedo)) return;
   e.preventDefault();
-  send({ type, root: tab });
+  send({ type, root: v.root });
 });
 send({ type: 'ready' });

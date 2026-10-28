@@ -33,6 +33,7 @@
   "Remove": "Remover",
   "Search project": "Buscar projeto",
   "Undo": "Desfazer",
+  "Project changed outside syncstage — history cleared": "Projeto alterado fora do syncstage — histórico limpo",
   "Redo": "Refazer",
   "Nothing to undo": "Nada a desfazer",
   "Nothing to redo": "Nada a refazer",

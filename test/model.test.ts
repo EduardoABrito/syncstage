@@ -1,0 +1,45 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  emptyProject, addKey, setKeyValues, selectAll, resolve, renameEnv, removeEnv, addEnv, validate,
+} from '../src/core/model';
+
+test('selectEnv then resolve picks env value; missing key reported', () => {
+  let p = addKey(emptyProject(), 'API', 'd', 'dev');
+  p = setKeyValues(p, 'API', { dev: 'd', qa: 'q' });
+  p = addKey(p, 'DB', 'x', 'dev');
+  p = selectAll(p, 'qa');
+  assert.deepEqual([...resolve(p).values], [['API', 'q']]);
+  assert.deepEqual(resolve(p).missing, ['DB']);
+});
+test('addKey unregistered flags; setKeyValues clears flag', () => {
+  let p = addKey(emptyProject(), 'N', 'v', 'dev', true);
+  assert.deepEqual(p.values.unregistered, ['N']);
+  assert.deepEqual(setKeyValues(p, 'N', { dev: 'v' }).values.unregistered, []);
+});
+test('setKeyValues with empty string removes that env value', () => {
+  const p = setKeyValues(addKey(emptyProject(), 'A', 'v', 'dev'), 'A', { dev: '' });
+  assert.equal(p.values.values.A.dev, undefined);
+});
+test('renameEnv moves values and selection', () => {
+  const p = renameEnv(addKey(emptyProject(), 'A', 'v', 'qa'), 'qa', 'stage');
+  assert.deepEqual(p.schema.environments, ['dev', 'stage', 'main']);
+  assert.equal(p.values.selected.A, 'stage');
+  assert.equal(p.values.values.A.stage, 'v');
+});
+test('removeEnv drops values, reselects defaultEnv; refuses last env', () => {
+  const p = removeEnv(addKey(emptyProject(), 'A', 'v', 'qa'), 'qa');
+  assert.equal(p.values.selected.A, 'dev');
+  assert.equal(p.values.values.A.qa, undefined);
+  assert.throws(() => removeEnv(emptyProject(['dev']), 'dev'));
+});
+test('addKey/addEnv reject duplicates and invalid key names', () => {
+  const p = addKey(emptyProject(), 'A', 'v', 'dev');
+  assert.throws(() => addKey(p, 'A', 'v', 'dev'));
+  assert.throws(() => addKey(p, '1BAD', 'v', 'dev'));
+  assert.throws(() => addEnv(p, 'dev'));
+});
+test('validate rejects wrong shapes', () => {
+  assert.throws(() => validate({ version: 1, environments: 'x' }, 'schema'));
+  assert.ok(validate(emptyProject().schema, 'schema'));
+});

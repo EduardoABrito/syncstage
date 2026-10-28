@@ -4,6 +4,8 @@ export type DotenvLine =
 export interface DotenvDoc { lines: DotenvLine[]; eol: '\n' | '\r\n' }
 
 const KEY_RE = /^\s*(export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/;
+const KEY_NAME_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+export const isValidKey = (k: string): boolean => KEY_NAME_RE.test(k);
 const BARE_RE = /^[A-Za-z0-9_./:@,+\-]*$/;
 const UNESCAPES: Record<string, string> = { n: '\n', r: '\r', t: '\t', '"': '"', '\\': '\\' };
 

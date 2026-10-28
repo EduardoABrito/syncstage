@@ -1,3 +1,4 @@
 {
-  "command.openPanel": "syncstage: Abrir painel"
+  "command.openPanel": "syncstage: Abrir painel",
+  "description": "Mantenha valores .env por projeto para cada ambiente e alterne entre eles."
 }

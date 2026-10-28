@@ -3,6 +3,15 @@
   "displayName": "syncstage",
   "publisher": "eduardoabrito",
   "version": "0.1.0",
+  "description": "%description%",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eduardoabrito/syncstage"
+  },
+  "categories": [
+    "Other"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },

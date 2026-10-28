@@ -8,6 +8,7 @@ import {
   Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
 } from './core/model';
 import type { FromWebview, ProjectView } from './core/protocol';
+import { History } from './core/history';
 import { SelfWrites, renderTarget } from './core/sync';
 import { gate } from './gate';
 import { SyncPanel } from './panel';
@@ -21,6 +22,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const selfWrites = new SelfWrites();
   const states = new Map<string, LoadResult>();
   const pending = new Map<string, Pending>();
+  const histories = new Map<string, History>(); // per-root undo/redo, session only
+  const lastSaved = new Map<string, string>(); // JSON of what syncstage itself last saved per root
+  const hist = (root: string): History => { let h = histories.get(root); if (!h) histories.set(root, h = new History()); return h; };
   const drafts = new Map<string, Project>(); // roots with a target but no .syncstage/: shown, not persisted
   const watchers = new Map<string, { target: string; w: vscode.FileSystemWatcher }>();
   const folders = (): readonly vscode.WorkspaceFolder[] => vscode.workspace.workspaceFolders ?? [];
@@ -32,7 +36,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   const views = (): ProjectView[] => projects.map(({ root, name }): ProjectView => {
     const s = states.get(root) ?? { status: 'missing' as const };
-    const base = { name, root, missing: [] as string[], pending: pending.get(root) };
+    const h = histories.get(root);
+    const base = { name, root, missing: [] as string[], pending: pending.get(root), canUndo: h?.canUndo ?? false, canRedo: h?.canRedo ?? false };
     const d = s.status === 'missing' ? drafts.get(root) : undefined;
     if (d) return { ...base, status: 'ok', project: d, draft: true, missing: resolve(d).missing };
     if (s.status === 'ok') return { ...base, status: 'ok', project: s.project, missing: resolve(s.project).missing };
@@ -81,13 +86,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
   async function refresh(): Promise<void> {
     projects = await discover();
     const roots = projects.map(x => x.root);
-    for (const r of [...states.keys()]) if (!roots.includes(r)) { states.delete(r); pending.delete(r); drafts.delete(r); }
+    for (const r of [...states.keys()]) if (!roots.includes(r)) { states.delete(r); pending.delete(r); drafts.delete(r); histories.delete(r); lastSaved.delete(r); }
     for (const root of roots) {
       let s = await load(root);
       if (s.status === 'ok') {
         try { targetPath(root, s.project); } catch (e) { s = { status: 'invalid', file: '.syncstage/schema.json', message: errMsg(e) }; }
       }
       states.set(root, s);
+      if (s.status === 'ok') { // an on-disk state we did not write invalidates history
+        const ser = JSON.stringify(s.project);
+        if (lastSaved.has(root) && lastSaved.get(root) !== ser) histories.get(root)?.clear();
+        lastSaved.set(root, ser);
+      } else { histories.delete(root); lastSaved.delete(root); }
       if (s.status !== 'ok') pending.delete(root); // stale review items must not follow a draft/missing root
       const d = s.status === 'missing' ? await loadDraft(root) : undefined;
       if (d) drafts.set(root, d); else drafts.delete(root);
@@ -154,7 +164,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const q = await gate(confirmed, root, p, gateDeps(root));
     if (!q) return undefined;
     if (q !== p) {
-      await save(root, q);
+      await persist(root, q);
       current = await readTarget(root, q);
       next = renderTarget(q, current, mode);
       if (next === current) return q;
@@ -181,8 +191,17 @@ export function activate(ctx: vscode.ExtensionContext): void {
     return p;
   }
 
-  async function commit(root: string, p: Project): Promise<void> {
+  /** every project save goes through here so our own writes never look external; `record` pushes the pre-save state onto history */
+  async function persist(root: string, p: Project, record = false): Promise<void> {
+    const before = record ? await load(root) : undefined;
     await save(root, p);
+    const after = await load(root); // canonical form, as refresh will see it
+    if (after.status === 'ok') lastSaved.set(root, JSON.stringify(after.project));
+    if (before?.status === 'ok' && JSON.stringify(before.project) !== JSON.stringify(p)) hist(root).record(before.project);
+  }
+
+  async function commit(root: string, p: Project): Promise<void> {
+    await persist(root, p, true);
     await syncTarget(root, p);
     await refresh();
   }
@@ -200,7 +219,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   async function finishImport(root: string, project: Project, conflicts: Change[]): Promise<void> {
     // every import path ends here: never save/commit over a manual review the user hasn't resolved
     if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first'));
-    await save(root, project);
+    await persist(root, project, true);
     if (conflicts.length) {
       pending.set(root, { kind: 'import', changes: conflicts });
       await refresh();
@@ -359,6 +378,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
     await commit(root, next); // always sync: rejected manual changes are restored
   }
 
+  async function doHistory(root: string, dir: 'undo' | 'redo'): Promise<void> {
+    const p = await okProject(root);
+    if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first'));
+    const h = hist(root);
+    const prev = dir === 'undo' ? h.undo(p) : h.redo(p);
+    if (!prev) { void vscode.window.showInformationMessage(dir === 'undo' ? t('Nothing to undo') : t('Nothing to redo')); return; }
+    pending.delete(root); // import review refers to the replaced state
+    await persist(root, prev);
+    await syncTarget(root, prev);
+    await refresh();
+  }
+
   async function handle(m: FromWebview): Promise<void> {
     if (m.type === 'ready') { panel.post(); return; }
     if (m.type === 'exportWorkspace') return doExportWorkspace(); // read-only, no root
@@ -366,6 +397,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
     if (m.type === 'exportConfig') return doExportConfig(m.root); // read-only: must not persist a draft
+    if (m.type === 'undo' || m.type === 'redo') return doHistory(m.root, m.type);
     const p = await mutable(m.root); // never write for missing/invalid projects
     if (!p) return;
     switch (m.type) {

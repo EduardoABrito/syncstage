@@ -236,6 +236,11 @@ function renderHeader(v: ProjectView, envs: string[]): HTMLElement {
   const uniform = used.size === 0 ? envs[0] : used.size === 1 ? [...used][0] : undefined;
   all.append(envSelect(envs, uniform, (env) => { if (env !== uniform) send({ type: 'selectAll', root: v.root, env }); }, uniform === undefined));
   h.append(all);
+  for (const [type, label, glyph, on] of [['undo', 'Undo', '↶', v.canUndo], ['redo', 'Redo', '↷', v.canRedo]] as const) {
+    const b = button(glyph, () => send({ type, root: v.root }), 'icon');
+    b.title = t(label); b.setAttribute('aria-label', t(label)); b.disabled = !on;
+    h.append(b);
+  }
   h.append(button(t('Import .env'), () => send({ type: 'import', root: v.root })));
   h.append(button(t('Import config'), () => send({ type: 'importConfig', root: v.root })));
   h.append(button(t('Export config'), () => send({ type: 'exportConfig', root: v.root })));
@@ -386,5 +391,15 @@ window.addEventListener('message', (e: MessageEvent<ToWebview>) => {
   projects = e.data.projects;
   strings = e.data.strings;
   render();
+});
+document.addEventListener('keydown', (e) => {
+  const x = e.target as HTMLElement | null;
+  if (x && (x.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(x.tagName))) return; // native field undo wins
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  const type = k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'y' && e.ctrlKey && !e.shiftKey ? 'redo' : undefined;
+  if (!type || !tab) return;
+  e.preventDefault();
+  send({ type, root: tab });
 });
 send({ type: 'ready' });

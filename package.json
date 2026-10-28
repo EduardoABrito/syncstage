@@ -4,6 +4,7 @@
   "publisher": "eduardoabrito",
   "version": "0.1.0",
   "description": "%description%",
+  "icon": "media/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",

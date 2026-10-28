@@ -103,6 +103,7 @@ function renderPicker(active: ProjectView): HTMLElement {
     pickerQuery = '';
     pickerHi = Math.max(0, matches().findIndex((p) => p.root === tab));
     render();
+    app.querySelector<HTMLInputElement>('input[data-ss="picker-search"]')?.focus();
   };
   const close = (refocus: boolean): void => {
     pickerOpen = false;

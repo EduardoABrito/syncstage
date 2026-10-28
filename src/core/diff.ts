@@ -60,3 +60,10 @@ export function applyChanges(p: Project, accepted: Change[]): Project {
   }
   return n;
 }
+
+/** Change ids are `${key}\0${env}`: a key can have several pending envs. */
+export const changeId = (c: Change): string => `${c.key}\0${c.env}`;
+export function acceptedChanges(changes: Change[], ids: string[]): Change[] {
+  const ok = new Set(ids);
+  return changes.filter(c => ok.has(changeId(c)));
+}

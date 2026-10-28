@@ -10,6 +10,8 @@ export interface Config {
   values: Record<string, Record<string, string>>;
 }
 
+const MAX_KEYS = 2000; // mergeConfig clones the project per op: stay well under a UI freeze
+const MAX_ENVS = 100;
 const own = <T>(o: Record<string, T>, k: string): T | undefined => (Object.hasOwn(o, k) ? o[k] : undefined);
 
 export function exportConfig(p: Project, withValues: boolean): string {
@@ -33,9 +35,11 @@ export function parseConfig(raw: unknown): Config {
   const r = raw as Record<string, unknown>;
   if (r.syncstage !== 1) throw new Error('Unsupported or missing "syncstage" version');
   // reuse the model's rules for names and leaf values
+  if (Array.isArray(r.keys) && r.keys.length > MAX_KEYS) throw new Error(`Too many keys (max ${MAX_KEYS})`);
+  if (Array.isArray(r.environments) && r.environments.length > MAX_ENVS) throw new Error(`Too many environments (max ${MAX_ENVS})`);
   const { environments, keys } = validate({ version: 1, target: '-', environments: r.environments, keys: r.keys }, 'schema') as Schema;
   const { selected, values } = validate(
-    { version: 1, selected: r.selected ?? {}, values: r.values ?? {}, unregistered: [] }, 'values') as Values;
+    { version: 1, selected: r.selected === undefined ? {} : r.selected, values: r.values === undefined ? {} : r.values, unregistered: [] }, 'values') as Values;
   for (const [k, e] of Object.entries(selected)) {
     if (!keys.includes(k) || !environments.includes(e)) throw new Error(`Invalid config: bad selection for "${k}"`);
   }

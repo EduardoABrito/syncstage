@@ -18,4 +18,4 @@ export type FromWebview =
   | { type: 'saveKey'; root: string; key: string; values: Record<string, string> }
   | { type: 'addKey'; root: string; key: string; value: string; env: string }
   | { type: 'removeKey'; root: string; key: string }
-  | { type: 'resolve'; root: string; accepted: string[] }; // keys accepted pending; others rejected
+  | { type: 'resolve'; root: string; accepted: string[] }; // `${key}\0${env}` ids accepted pending; others rejected

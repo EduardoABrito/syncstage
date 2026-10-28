@@ -230,7 +230,7 @@ function renderHeader(v: ProjectView, envs: string[]): HTMLElement {
   const h = el('div', 'header');
   const all = el('label', 'all', t('All keys →'));
   const p = v.project as NonNullable<ProjectView['project']>;
-  const used = new Set(p.schema.keys.map((k) => (Object.hasOwn(p.values.selected, k) ? p.values.selected[k] : envs[0])));
+  const used = new Set(p.schema.keys.map((k) => (Object.hasOwn(p.values.selected, k) && envs.includes(p.values.selected[k]) ? p.values.selected[k] : envs[0])));
   const uniform = used.size === 0 ? envs[0] : used.size === 1 ? [...used][0] : undefined;
   all.append(envSelect(envs, uniform, (env) => { if (env !== uniform) send({ type: 'selectAll', root: v.root, env }); }, uniform === undefined));
   h.append(all);
@@ -264,15 +264,16 @@ function renderPending(v: ProjectView): HTMLElement {
   const pending = v.pending!;
   const box = el('div', 'banner warn');
   box.append(el('div', 'banner-title', t('Changes to review')));
-  const rows: { key: string; cb: HTMLInputElement }[] = [];
+  const rows: { id: string; cb: HTMLInputElement }[] = [];
   for (const c of pending.changes) {
     const row = el('label', 'change');
     const cb = el('input');
     cb.type = 'checkbox';
-    const id = `${v.root}\0${c.key}`;
+    const cid = `${c.key}\0${c.env}`; // same id scheme as acceptedChanges()
+    const id = `${v.root}\0${cid}`;
     cb.checked = !unchecked.has(id);
     cb.addEventListener('change', () => { if (cb.checked) unchecked.delete(id); else unchecked.add(id); });
-    rows.push({ key: c.key, cb });
+    rows.push({ id: cid, cb });
     const before = c.isNew || c.before === undefined ? t('(new)') : show(c.before);
     const after = c.after === undefined ? t('(removed)') : show(c.after);
     row.append(cb, el('code', 'change-key', c.key), el('span', 'change-env', c.env),
@@ -281,11 +282,11 @@ function renderPending(v: ProjectView): HTMLElement {
   }
   const actions = el('div', 'actions');
   actions.append(button(t('Apply'), () => {
-    for (const r of rows) unchecked.delete(`${v.root}\0${r.key}`);
-    send({ type: 'resolve', root: v.root, accepted: rows.filter((r) => r.cb.checked).map((r) => r.key) });
+    for (const r of rows) unchecked.delete(`${v.root}\0${r.id}`);
+    send({ type: 'resolve', root: v.root, accepted: rows.filter((r) => r.cb.checked).map((r) => r.id) });
   }, 'primary'));
   actions.append(button(t('Discard all'), () => {
-    for (const r of rows) unchecked.delete(`${v.root}\0${r.key}`);
+    for (const r of rows) unchecked.delete(`${v.root}\0${r.id}`);
     send({ type: 'resolve', root: v.root, accepted: [] });
   }));
   box.append(actions);

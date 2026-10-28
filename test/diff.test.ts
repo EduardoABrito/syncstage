@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addKey, emptyProject, setKeyValues } from '../src/core/model';
-import { applyChanges, importDiff, manualDiff } from '../src/core/diff';
+import { acceptedChanges, applyChanges, changeId, importDiff, manualDiff } from '../src/core/diff';
 
 const base = () => addKey(addKey(emptyProject(), 'A', '1', 'dev'), 'B', '2', 'dev');
 test('importDiff: new keys added flagged, same skipped, conflicts listed', () => {
@@ -43,4 +43,13 @@ test('manualDiff: key missing in its env only counts when changed vs lastWritten
   assert.deepEqual(manualDiff(p, act), []);
   assert.deepEqual(manualDiff(p, act, new Map([['A', '1'], ['B', 'old']])), []);
   assert.deepEqual(manualDiff(p, act, new Map([['B', 'older']])), [{ key: 'B', env: 'dev', before: 'older', after: 'old', isNew: false }]);
+});
+test('acceptedChanges filters by key AND env', () => {
+  const cs = [
+    { key: 'A', env: 'dev', before: '1', after: '2', isNew: false },
+    { key: 'A', env: 'qa', before: '3', after: '4', isNew: false },
+  ];
+  const got = acceptedChanges(cs, [changeId(cs[0])]);
+  assert.deepEqual(got, [cs[0]]);
+  assert.deepEqual(acceptedChanges(cs, []), []);
 });

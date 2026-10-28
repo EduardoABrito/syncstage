@@ -1,10 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { sep } from 'node:path';
+import { join, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
 import { exportConfig, mergeConfig, parseConfig } from './core/config';
-import { Change, applyChanges, importDiff, manualDiff } from './core/diff';
+import { Change, acceptedChanges, applyChanges, importDiff, manualDiff } from './core/diff';
 import {
   Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
 } from './core/model';
@@ -12,7 +11,7 @@ import type { FromWebview, ProjectView } from './core/protocol';
 import { SelfWrites, renderTarget } from './core/sync';
 import { gate } from './gate';
 import { SyncPanel } from './panel';
-import { LoadResult, init, isTrackedByGit, load, loadDraft, projectRoots, readTarget, save, targetPath, writeTarget } from './project';
+import { LoadResult, init, isIgnoredByGit, isTrackedByGit, load, loadDraft, projectRoots, readTarget, save, targetPath, writeTarget } from './project';
 
 const t = vscode.l10n.t;
 type Pending = { kind: 'import' | 'manual'; changes: Change[] };
@@ -231,6 +230,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
       defaultUri: vscode.Uri.file(join(root, 'syncstage-config.json')), filters: { JSON: ['json'] }, title: t('Export config'),
     });
     if (!uri) return;
+    if (pick === withValues && uri.fsPath.startsWith(root + sep) && !(await isIgnoredByGit(root, uri.fsPath))) {
+      const yes = t('Save anyway');
+      const a = await vscode.window.showWarningMessage(
+        t('{0} is not gitignored — secret values could be committed. Save anyway?', uri.fsPath.slice(root.length + 1)), { modal: true }, yes);
+      if (a !== yes) return;
+    }
     await vscode.workspace.fs.writeFile(uri, Buffer.from(exportConfig(p, pick === withValues), 'utf8'));
     void vscode.window.showInformationMessage(t('Config exported {0}', uri.fsPath));
   }
@@ -270,8 +275,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const pend = pending.get(root);
     if (!pend) return;
     const p = await okProject(root);
-    const ok = new Set(accepted);
-    const next = applyChanges(p, pend.changes.filter(c => ok.has(c.key)));
+    const next = applyChanges(p, acceptedChanges(pend.changes, accepted));
     pending.delete(root);
     await commit(root, next); // always sync: rejected manual changes are restored
   }

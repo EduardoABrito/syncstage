@@ -1,5 +1,7 @@
 {
   "All keys →": "Todas as chaves →",
+  "Save anyway": "Salvar mesmo assim",
+  "{0} is not gitignored — secret values could be committed. Save anyway?": "{0} não está no gitignore — valores secretos poderiam ser commitados. Salvar mesmo assim?",
   "(mixed)": "(misto)",
   "Export config": "Exportar config",
   "Import config": "Importar config",

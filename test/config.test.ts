@@ -110,3 +110,10 @@ test('mergeConfig without values only adds structure', () => {
   assert.deepEqual(project.schema.keys, ['A', 'B']);
   assert.deepEqual(project.values.values, { A: {}, B: {} });
 });
+
+test('parseConfig: size limits and null selected/values', () => {
+  assert.throws(() => parseConfig({ ...base, keys: Array.from({ length: 2001 }, (_, i) => `K${i}`), selected: {}, values: {} }), /Too many keys/);
+  assert.throws(() => parseConfig({ ...base, environments: Array.from({ length: 101 }, (_, i) => `e${i}`), selected: {}, values: {} }), /Too many environments/);
+  bad({ selected: null });
+  bad({ values: null });
+});

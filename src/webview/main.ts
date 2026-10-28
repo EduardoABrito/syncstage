@@ -223,6 +223,7 @@ function renderRow(v: ProjectView, key: string, sel: string, byEnv: Record<strin
     if (rendering || input.value === old) return;
     if (input.value === '' && old !== '') { input.value = old; return; } // clearing lives in the editor
     old = input.value;
+    input.defaultValue = old;
     send({ type: 'saveKey', root: v.root, key, values: { [sel]: old } });
   };
   input.addEventListener('keydown', (e) => {

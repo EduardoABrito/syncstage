@@ -11,7 +11,7 @@ export interface ProjectView {
 export type ToWebview = { type: 'state'; projects: ProjectView[]; strings: Record<string, string> };
 export type FromWebview =
   | { type: 'ready' }
-  | { type: 'init' | 'import' | 'generate' | 'addEnv'; root: string }
+  | { type: 'init' | 'import' | 'generate' | 'addEnv' | 'exportConfig' | 'importConfig'; root: string }
   | { type: 'renameEnv' | 'removeEnv'; root: string; env: string }
   | { type: 'select'; root: string; key: string; env: string }
   | { type: 'selectAll'; root: string; env: string }

@@ -1,5 +1,12 @@
 {
   "All keys →": "Todas as chaves →",
+  "(mixed)": "(misto)",
+  "Export config": "Exportar config",
+  "Import config": "Importar config",
+  "With values (includes secrets)": "Com valores (inclui segredos)",
+  "Structure only (no values)": "Só estrutura (sem valores)",
+  "Config exported {0}": "Config exportada {0}",
+  "Invalid syncstage config: {0}": "Config do syncstage inválida: {0}",
   "Import .env": "Importar .env",
   "Generate .env": "Gerar .env",
   "Environment": "Ambiente",

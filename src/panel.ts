@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import type { FromWebview, ProjectView, ToWebview } from './core/protocol';
 
 const STRINGS = [
-  'All keys →', 'Import .env', 'Generate .env', 'Environment', 'Key', 'Value', 'Initialize syncstage',
+  'All keys →', '(mixed)', 'Export config', 'Import config', 'Import .env', 'Generate .env', 'Environment', 'Key', 'Value', 'Initialize syncstage',
   'not registered', 'missing in {0}', 'Show values', 'Save', 'Cancel', 'Delete key', 'new key', 'value',
   'Apply', 'Discard all', '(removed)', '(new)', 'Changes to review', '+ Environment', 'Rename', 'Remove', 'Search project', 'No projects found',
   'Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.',

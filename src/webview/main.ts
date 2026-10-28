@@ -33,14 +33,21 @@ function button(label: string, onClick: () => void, cls = ''): HTMLButtonElement
   b.addEventListener('click', onClick);
   return b;
 }
-function envSelect(envs: string[], current: string | undefined, onChange?: (env: string) => void): HTMLSelectElement {
+function envSelect(envs: string[], current: string | undefined, onChange?: (env: string) => void, mixed = false): HTMLSelectElement {
   const s = el('select');
+  if (mixed) { // nothing uniform: disabled placeholder shown until the user picks
+    const o = el('option', undefined, t('(mixed)'));
+    o.value = '';
+    o.disabled = true;
+    o.selected = true;
+    s.append(o);
+  }
   for (const e of envs) {
     const o = el('option', undefined, e);
     o.value = e;
     s.append(o);
   }
-  if (current !== undefined) s.value = current;
+  if (current !== undefined && !mixed) s.value = current;
   if (onChange) s.addEventListener('change', () => onChange(s.value));
   return s;
 }
@@ -222,11 +229,14 @@ function renderProject(v: ProjectView): HTMLElement {
 function renderHeader(v: ProjectView, envs: string[]): HTMLElement {
   const h = el('div', 'header');
   const all = el('label', 'all', t('All keys →'));
-  all.append(envSelect(envs, undefined, (env) => send({ type: 'selectAll', root: v.root, env })));
-  // placeholder-less select: nothing chosen until the user picks
-  (all.querySelector('select') as HTMLSelectElement).selectedIndex = -1;
+  const p = v.project as NonNullable<ProjectView['project']>;
+  const used = new Set(p.schema.keys.map((k) => (Object.hasOwn(p.values.selected, k) ? p.values.selected[k] : envs[0])));
+  const uniform = used.size === 0 ? envs[0] : used.size === 1 ? [...used][0] : undefined;
+  all.append(envSelect(envs, uniform, (env) => { if (env !== uniform) send({ type: 'selectAll', root: v.root, env }); }, uniform === undefined));
   h.append(all);
   h.append(button(t('Import .env'), () => send({ type: 'import', root: v.root })));
+  h.append(button(t('Import config'), () => send({ type: 'importConfig', root: v.root })));
+  h.append(button(t('Export config'), () => send({ type: 'exportConfig', root: v.root })));
   h.append(button(t('Generate .env'), () => send({ type: 'generate', root: v.root })));
   h.append(button(t('+ Environment'), () => send({ type: 'addEnv', root: v.root })));
 

@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { sep } from 'node:path';
 import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
+import { exportConfig, mergeConfig, parseConfig } from './core/config';
 import { Change, applyChanges, importDiff, manualDiff } from './core/diff';
 import {
   Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
@@ -192,6 +194,11 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   async function importContent(root: string, p: Project, content: string, env: string): Promise<void> {
     const { project, conflicts } = importDiff(p, env, toMap(parse(content)));
+    await finishImport(root, project, conflicts);
+  }
+
+  /** save, then either queue conflicts for review or sync the target */
+  async function finishImport(root: string, project: Project, conflicts: Change[]): Promise<void> {
     await save(root, project);
     if (conflicts.length) {
       pending.set(root, { kind: 'import', changes: conflicts });
@@ -211,6 +218,37 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const env = await pickEnv(p);
     if (!env) return;
     await importContent(root, p, await readFile(uris[0].fsPath, 'utf8'), env);
+  }
+
+  async function doExportConfig(root: string): Promise<void> {
+    const s = states.get(root);
+    const p = drafts.get(root) ?? (s?.status === 'ok' ? s.project : undefined); // a draft is exported as-is, never persisted
+    if (!p) throw new Error(t('Project is not initialized or its syncstage files are invalid'));
+    const withValues = t('With values (includes secrets)');
+    const pick = await vscode.window.showQuickPick([withValues, t('Structure only (no values)')], { placeHolder: t('Export config') });
+    if (!pick) return;
+    const uri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(join(root, 'syncstage-config.json')), filters: { JSON: ['json'] }, title: t('Export config'),
+    });
+    if (!uri) return;
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(exportConfig(p, pick === withValues), 'utf8'));
+    void vscode.window.showInformationMessage(t('Config exported {0}', uri.fsPath));
+  }
+
+  async function doImportConfig(root: string): Promise<void> {
+    const p = await okProject(root);
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false, defaultUri: vscode.Uri.file(root), filters: { JSON: ['json'] }, title: t('Import config'),
+    });
+    if (!uris?.length) return;
+    let merged: ReturnType<typeof mergeConfig>;
+    try {
+      merged = mergeConfig(p, parseConfig(JSON.parse(await readFile(uris[0].fsPath, 'utf8'))));
+    } catch (e) {
+      void vscode.window.showErrorMessage(t('Invalid syncstage config: {0}', errMsg(e)));
+      return;
+    }
+    await finishImport(root, merged.project, merged.conflicts);
   }
 
   async function doInit(root: string): Promise<void> {
@@ -242,10 +280,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     if (m.type === 'ready') { panel.post(); return; }
     if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
+    if (m.type === 'exportConfig') return doExportConfig(m.root); // read-only: must not persist a draft
     const p = await mutable(m.root); // never write for missing/invalid projects
     if (!p) return;
     switch (m.type) {
       case 'import': return doImport(m.root);
+      case 'importConfig': return doImportConfig(m.root);
       case 'generate': {
         await syncTarget(m.root, p, 'generate');
         await refresh();

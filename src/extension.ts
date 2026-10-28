@@ -67,6 +67,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
         try { targetPath(root, s.project); } catch (e) { s = { status: 'invalid', file: '.syncstage/schema.json', message: errMsg(e) }; }
       }
       states.set(root, s);
+      if (s.status !== 'ok') pending.delete(root); // stale review items must not follow a draft/missing root
       const d = s.status === 'missing' ? await loadDraft(root) : undefined;
       if (d) drafts.set(root, d); else drafts.delete(root);
     }

@@ -42,6 +42,8 @@ export async function load(root: string): Promise<LoadResult> {
 export async function loadDraft(root: string): Promise<Project | undefined> {
   try {
     if ((await readOpt(join(root, DIR, 'values.json'))) !== undefined) return undefined;
+    const st = await lstat(targetPath(root, emptyProject())).catch(() => undefined);
+    if (!st?.isFile() || st.size > 1024 * 1024) return undefined; // regular file only: no symlink/FIFO/device, max 1 MB
     const d = draftProject(await readTarget(root, emptyProject()));
     return d.schema.keys.length ? d : undefined;
   } catch { return undefined; }

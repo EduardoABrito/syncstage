@@ -107,3 +107,15 @@ test('loadDraft: only for .env with keys and no values.json; writes nothing', as
   await mkdir(join(dir, '.syncstage')); await writeFile(join(dir, '.syncstage/values.json'), '{}');
   assert.equal(await loadDraft(dir), undefined);
 });
+
+test('loadDraft ignores a symlinked or oversized .env and never reads the link target', async () => {
+  const { loadDraft } = await import('../src/project');
+  const dir = await mkdtemp(join(tmpdir(), 'ss-'));
+  const other = await mkdtemp(join(tmpdir(), 'ss-'));
+  await writeFile(join(other, 'secret'), 'SECRET=1\n');
+  await symlink(join(other, 'secret'), join(dir, '.env'));
+  assert.equal(await loadDraft(dir), undefined);
+  await rm(join(dir, '.env'));
+  await writeFile(join(dir, '.env'), 'A=' + 'x'.repeat(1024 * 1024) + '\n');
+  assert.equal(await loadDraft(dir), undefined);
+});

@@ -13,7 +13,8 @@ export function renderTarget(p: Project, current: string, mode: 'sync' | 'genera
 }
 
 export class SelfWrites {
-  private last = new Map<string, string>();
-  mark(path: string, content: string): void { this.last.set(path, content); }
-  isSelfWrite(path: string, content: string): boolean { return this.last.get(path) === content; }
+  private lastByPath = new Map<string, string>();
+  mark(path: string, content: string): void { this.lastByPath.set(path, content); }
+  last(path: string): string | undefined { return this.lastByPath.get(path); }
+  isSelfWrite(path: string, content: string): boolean { return this.lastByPath.get(path) === content; }
 }

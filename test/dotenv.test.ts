@@ -26,3 +26,9 @@ test('round-trips awkward values', () => {
 test('formatValue leaves simple values bare', () => {
   assert.equal(formatValue('http://localhost:5002/a-b_c.d@e,f+g'), 'http://localhost:5002/a-b_c.d@e,f+g');
 });
+
+test('update never writes invalid keys', async () => {
+  const { parse, update } = await import('../src/core/dotenv');
+  const out = update(parse(''), new Map([['x\n[core]', ''], ['OK', '1']]), true);
+  assert.equal(out, 'OK=1\n');
+});

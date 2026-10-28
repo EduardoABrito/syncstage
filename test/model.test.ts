@@ -57,3 +57,17 @@ test('rejects __proto__ key and prototype-member env names', () => {
   assert.throws(() => addEnv(emptyProject(), 'toString'));
   assert.throws(() => renameEnv(emptyProject(), 'dev', 'constructor'));
 });
+
+test('validate rejects hostile schema/values and renderTarget cannot inject lines', () => {
+  const s = (o: object) => ({ version: 1, target: '.env', environments: ['dev'], keys: [], ...o });
+  const payload = 'x\n[core]\n\tfsmonitor = touch /tmp/pwned #';
+  assert.throws(() => validate(s({ target: '.git/config', keys: [payload] }), 'schema'), /keys/);
+  assert.throws(() => validate(s({ keys: ['A', 'A'] }), 'schema'), /keys/);
+  assert.throws(() => validate(s({ environments: ['dev', 'dev'] }), 'schema'), /environments/);
+  assert.throws(() => validate(s({ environments: [' '] }), 'schema'), /environments/);
+  assert.throws(() => validate(s({ environments: ['constructor'] }), 'schema'), /environments/);
+  const v = (o: object) => ({ version: 1, selected: {}, values: {}, unregistered: [], ...o });
+  assert.throws(() => validate(v({ selected: { [payload]: 'dev' } }), 'values'), /selected/);
+  assert.throws(() => validate(v({ values: { [payload]: { dev: 'a' } } }), 'values'), /values/);
+  assert.throws(() => validate(v({ values: { A: { dev: 1 } } }), 'values'), /values/);
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addKey, emptyProject } from '../src/core/model';
+import { addKey, emptyProject, setKeyValues } from '../src/core/model';
 import { applyChanges, importDiff, manualDiff } from '../src/core/diff';
 
 const base = () => addKey(addKey(emptyProject(), 'A', '1', 'dev'), 'B', '2', 'dev');
@@ -36,4 +36,11 @@ test('invalid/proto keys ignored; removal and new apply', () => {
   assert.equal(p.values.values.B.dev, undefined);
   assert.deepEqual(p.values.unregistered, ['N']);
   assert.equal(importDiff(base(), 'dev', new Map([['__proto__', 'x']])).project.schema.keys.length, 2);
+});
+test('manualDiff: key missing in its env only counts when changed vs lastWritten', () => {
+  const p = setKeyValues(base(), 'B', { dev: '' }); // B has no dev value
+  const act = new Map([['A', '1'], ['B', 'old']]);
+  assert.deepEqual(manualDiff(p, act), []);
+  assert.deepEqual(manualDiff(p, act, new Map([['A', '1'], ['B', 'old']])), []);
+  assert.deepEqual(manualDiff(p, act, new Map([['B', 'older']])), [{ key: 'B', env: 'dev', before: 'older', after: 'old', isNew: false }]);
 });

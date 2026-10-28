@@ -24,10 +24,21 @@ export function importDiff(p: Project, env: string, incoming: Map<string, string
   return { project, conflicts };
 }
 
-export function manualDiff(p: Project, actual: Map<string, string>): Change[] {
-  const { values } = resolve(p);
+export function manualDiff(p: Project, actual: Map<string, string>, lastWritten?: Map<string, string>): Change[] {
+  const { values, missing } = resolve(p);
+  const miss = new Set(missing);
   const changes: Change[] = [];
   for (const key of p.schema.keys) {
+    if (miss.has(key)) {
+      // no value in selected env: sync leaves the old line; only a change vs what we last wrote counts
+      const prev = lastWritten?.get(key);
+      const after = actual.get(key);
+      if (prev !== undefined && after !== undefined && after !== prev) {
+        const env = Object.hasOwn(p.values.selected, key) ? p.values.selected[key] : defaultEnv(p);
+        changes.push({ key, env, before: prev, after, isNew: false });
+      }
+      continue;
+    }
     const before = values.get(key);
     const after = actual.get(key);
     if (before === after || (before === undefined && after === '')) continue;

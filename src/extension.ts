@@ -93,7 +93,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     if (s?.status !== 'ok') return;
     const content = await readTarget(root, s.project);
     if (selfWrites.isSelfWrite(targetPath(root, s.project), content)) return;
-    const changes = manualDiff(s.project, toMap(parse(content)));
+    const prev = selfWrites.last(targetPath(root, s.project));
+    const changes = manualDiff(s.project, toMap(parse(content)), prev === undefined ? undefined : toMap(parse(prev)));
     if (changes.length === 0) pending.delete(root);
     else {
       pending.set(root, { kind: 'manual', changes });
@@ -228,8 +229,21 @@ export function activate(ctx: vscode.ExtensionContext): void {
       }
       case 'select': return commit(m.root, selectEnv(p, m.key, m.env));
       case 'selectAll': return commit(m.root, selectAll(p, m.env));
-      case 'saveKey': return commit(m.root, setKeyValues(p, m.key, m.values));
-      case 'addKey': return commit(m.root, addKey(p, m.key, m.value, m.env));
+      case 'saveKey': {
+        const v: unknown = m.values;
+        if (typeof m.key !== 'string' || typeof v !== 'object' || v === null || Array.isArray(v) || !Object.values(v).every(x => typeof x === 'string')) {
+          void vscode.window.showErrorMessage(t('Invalid message from panel'));
+          return;
+        }
+        return commit(m.root, setKeyValues(p, m.key, m.values));
+      }
+      case 'addKey': {
+        if (typeof m.key !== 'string' || typeof m.value !== 'string' || typeof m.env !== 'string') {
+          void vscode.window.showErrorMessage(t('Invalid message from panel'));
+          return;
+        }
+        return commit(m.root, addKey(p, m.key, m.value, m.env));
+      }
       case 'removeKey': return commit(m.root, removeKey(p, m.key));
       case 'resolve': return doResolve(m.root, m.accepted);
     }

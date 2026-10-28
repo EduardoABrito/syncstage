@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
-import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isValidKey } from './core/dotenv';
 import { emptyProject, validate, type Project, type Schema, type Values } from './core/model';
 
 export type LoadResult =
@@ -53,6 +54,20 @@ export async function ensureGitignore(root: string): Promise<void> {
 
 export async function init(root: string, p: Project = emptyProject()): Promise<Project> {
   await mkdir(join(root, DIR), { recursive: true });
+  const vf = join(root, DIR, 'values.json');
+  const raw = await readOpt(vf);
+  if (raw !== undefined) {
+    // values.json exists without schema: rebuild schema from it, never overwrite the values
+    let values: Values;
+    try { values = validate(JSON.parse(raw), 'values') as Values; } catch (e) { throw new Error(`Invalid ${vf}: ${msg(e)}`); }
+    const keys = [...new Set([...Object.keys(values.values), ...Object.keys(values.selected)])].filter(isValidKey).sort();
+    const seen = [...Object.values(values.selected), ...Object.values(values.values).flatMap(Object.keys)];
+    const environments = [...new Set([...p.schema.environments, ...seen])].filter(e => e.trim() && !(e in Object.prototype));
+    p = { schema: { ...p.schema, environments, keys }, values };
+    await writeFile(join(root, DIR, 'schema.json'), JSON.stringify(p.schema, null, 2) + '\n');
+    await ensureGitignore(root);
+    return p;
+  }
   await save(root, p);
   await ensureGitignore(root);
   return p;
@@ -69,19 +84,35 @@ export function targetPath(root: string, p: Project): string {
   const t = p.schema.target;
   const abs = resolve(root, t);
   const rel = relative(resolve(root), abs);
+  if (/[*?[\]{}]/.test(t) || /^(\.git|\.syncstage)$/i.test(rel.split(/[\\/]/)[0])) throw new Error(`Invalid target: ${t}`);
   if (isAbsolute(t) || rel === '' || rel === '..' || rel.startsWith('..' + '/') || rel.startsWith('..\\') || isAbsolute(rel)) {
     throw new Error(`Invalid target (must be a file inside the project): ${t}`);
   }
   return abs;
 }
 
+/** Real parent dir must be inside the real root (a repo can commit `sub -> ../..`). Missing parent: refuse unless `lenient`. */
+async function checkParent(root: string, file: string, lenient: boolean): Promise<boolean> {
+  let parent: string;
+  try { parent = await realpath(dirname(file)); } catch (e) {
+    if (isEnoent(e) && lenient) return false;
+    throw isEnoent(e) ? new Error(`Target directory does not exist: ${dirname(file)}`) : e;
+  }
+  const r = await realpath(root);
+  if (parent !== r && !parent.startsWith(r + sep)) throw new Error(`Target directory resolves outside the project: ${file}`);
+  return true;
+}
+
 export async function readTarget(root: string, p: Project): Promise<string> {
-  return (await readOpt(targetPath(root, p))) ?? '';
+  const file = targetPath(root, p);
+  if (!(await checkParent(root, file, true))) return '';
+  return (await readOpt(file)) ?? '';
 }
 
 /** Write the target file; refuses symlinks (a repo could ship `.env -> ~/.bashrc`). */
 export async function writeTarget(root: string, p: Project, content: string): Promise<void> {
   const file = targetPath(root, p);
+  await checkParent(root, file, false);
   try {
     if ((await lstat(file)).isSymbolicLink()) throw new Error(`Refusing to write through symbolic link: ${p.schema.target}`);
   } catch (e) { if (!isEnoent(e)) throw e; }

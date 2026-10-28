@@ -33,5 +33,6 @@
   "Continue": "Continuar",
   "Change target": "Trocar destino",
   "New target file": "Novo arquivo de destino",
-  "Unknown project folder": "Pasta de projeto desconhecida"
+  "Unknown project folder": "Pasta de projeto desconhecida",
+  "Invalid message from panel": "Mensagem inválida do painel"
 }

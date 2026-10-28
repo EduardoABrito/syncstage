@@ -70,6 +70,7 @@ export function formatValue(value: string): string {
 }
 
 export function update(doc: DotenvDoc, updates: Map<string, string>, appendMissing: boolean): string {
+  updates = new Map([...updates].filter(([k]) => isValidKey(k))); // never write keys that could inject lines
   const last = new Map<string, number>();
   doc.lines.forEach((l, i) => { if (l.kind === 'entry') last.set(l.key, i); });
   const out = doc.lines.map((l, i) => {

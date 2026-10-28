@@ -147,12 +147,14 @@ export function validate(raw: unknown, kind: 'schema' | 'values'): Schema | Valu
   if (raw.version !== 1) bad('version');
   if (kind === 'schema') {
     if (typeof raw.target !== 'string' || !raw.target) bad('target');
-    if (!isStrArr(raw.environments) || raw.environments.length === 0) bad('environments');
-    if (!isStrArr(raw.keys)) bad('keys');
+    const envs = raw.environments;
+    if (!isStrArr(envs) || envs.length === 0) bad('environments');
+    if (!isStrArr(raw.keys) || !raw.keys.every(isValidKey) || new Set(raw.keys).size !== raw.keys.length) bad('keys');
+    if ((envs as string[]).some(e => !e.trim() || e in Object.prototype) || new Set(envs as string[]).size !== (envs as string[]).length) bad('environments');
     return raw as unknown as Schema;
   }
-  if (!isStrRec(raw.selected)) bad('selected');
-  if (!isObj(raw.values) || !Object.values(raw.values).every(isStrRec)) bad('values');
+  if (!isStrRec(raw.selected) || !Object.keys(raw.selected as object).every(isValidKey)) bad('selected');
+  if (!isObj(raw.values) || !Object.values(raw.values).every(isStrRec) || !Object.keys(raw.values).every(isValidKey)) bad('values');
   if (!isStrArr(raw.unregistered)) bad('unregistered');
   return raw as unknown as Values;
 }

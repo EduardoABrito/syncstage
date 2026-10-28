@@ -1,0 +1,75 @@
+<h2>Qual formato de tela faz mais sentido no dia a dia?</h2>
+<p class="subtitle">Workspace com 3 projetos. Cada chave tem seu ambiente; dá pra trocar uma chave ou o projeto inteiro.</p>
+
+<style>
+  .opt { display:block; margin:0 0 28px; padding:16px; border:2px solid #444; border-radius:10px; background:#1a1a1a; cursor:pointer; }
+  .opt.selected { border-color:#4ea1ff; }
+  .opt h3 { margin:0 0 4px; } .opt .desc { color:#aaa; margin:0 0 12px; font-size:14px; }
+  .vs { display:block; width:560px; max-width:100%; background:#1e1e1e; color:#ccc; font:13px/1.6 -apple-system,system-ui,sans-serif; border:1px solid #333; border-radius:6px; overflow:hidden; }
+  .vs * { white-space:nowrap; }
+  .vs .bar { background:#252526; padding:6px 12px; font-size:11px; letter-spacing:.05em; color:#bbb; display:flex; justify-content:space-between; }
+  .vs .proj { padding:5px 12px; color:#fff; font-weight:600; display:flex; justify-content:space-between; align-items:center; background:#232323; }
+  .vs .row { padding:3px 12px 3px 30px; display:flex; justify-content:space-between; align-items:center; }
+  .vs .k { font-family:Menlo,monospace; color:#9cdcfe; }
+  .pill { font-size:11px; padding:1px 8px; border-radius:9px; font-weight:600; }
+  .dev { background:#2e5e2e; color:#b5f5b5; } .qa { background:#6b5310; color:#ffe08a; } .main { background:#6b1f1f; color:#ffb3b3; }
+  .warn { color:#e6a23c; font-size:12px; }
+  .vs select, .vs input { background:#3c3c3c; color:#ddd; border:1px solid #555; border-radius:3px; font-size:12px; padding:2px 4px; }
+  .vs table { width:100%; border-collapse:collapse; }
+  .vs th { text-align:left; font-weight:500; color:#888; font-size:11px; padding:5px 10px; border-bottom:1px solid #333; }
+  .vs td { padding:5px 10px; border-bottom:1px solid #2a2a2a; }
+  .tabs { display:flex; background:#252526; } .tabs span { padding:7px 14px; font-size:12px; color:#888; }
+  .tabs .on { background:#1e1e1e; color:#fff; border-top:2px solid #0e7fd6; }
+  .btn { background:#0e639c; color:#fff; border:none; border-radius:3px; padding:3px 10px; font-size:12px; }
+  .qp { margin-top:10px; width:340px; background:#252526; border:1px solid #454545; border-radius:6px; font:13px -apple-system,system-ui,sans-serif; color:#ccc; }
+  .qp div { padding:5px 12px; } .qp .hl { background:#04395e; color:#fff; }
+  .note { color:#888; font-size:12px; margin-top:8px; }
+</style>
+
+<div class="opt" data-choice="sidebar" onclick="toggleSelect(this)">
+  <h3>A · Árvore na barra lateral</h3>
+  <p class="desc">Visual nativo do VS Code, sempre à vista. Clicar na chave abre seletor rápido.</p>
+  <div class="vs">
+    <div class="bar"><span>ENV SWITCHER</span><span>⟳ &nbsp;＋&nbsp; ⇪ importar</span></div>
+    <div class="proj"><span>▾ wfe-public-web</span><span>tudo → <select><option>qa</option></select></span></div>
+    <div class="row"><span class="k">API_URL</span><span class="pill qa">qa</span></div>
+    <div class="row"><span class="k">KEYCLOAK_URL</span><span class="pill dev">dev</span></div>
+    <div class="row"><span class="k">NEW_FLAG</span><span class="warn">⚠ não cadastrado</span></div>
+    <div class="proj"><span>▾ wfe-event-api</span><span>tudo → <select><option>dev</option></select></span></div>
+    <div class="row"><span class="k">DATABASE_URL</span><span class="pill dev">dev</span></div>
+    <div class="row"><span class="k">AMQP_URL</span><span class="pill main">main</span></div>
+    <div class="proj"><span>▸ wfe-notify-api</span><span></span></div>
+  </div>
+  <div class="qp">
+    <div style="color:#888">API_URL — escolher ambiente</div>
+    <div>dev &nbsp;<span style="color:#777">http://localhost:5002</span></div>
+    <div class="hl">qa &nbsp;<span style="color:#9cc">https://qa.api.wolffox…</span></div>
+    <div>main &nbsp;<span style="color:#777">https://api.wolffox…</span></div>
+    <div>✎ editar valor…</div>
+  </div>
+  <p class="note">↑ seletor rápido ao clicar em API_URL</p>
+</div>
+
+<div class="opt" data-choice="panel" onclick="toggleSelect(this)">
+  <h3>B · Painel com tabela/formulário</h3>
+  <p class="desc">Abre como aba. Edita valor inline; input chave + valor + combo de ambiente.</p>
+  <div class="vs" style="width:640px">
+    <div class="tabs"><span class="on">wfe-public-web</span><span>wfe-event-api</span><span>wfe-notify-api</span></div>
+    <div style="padding:8px 10px;display:flex;justify-content:space-between;align-items:center">
+      <span>Todas as chaves → <select><option>qa</option></select></span>
+      <span><button class="btn">Importar .env</button> <button class="btn">Gerar .env</button></span>
+    </div>
+    <table>
+      <tr><th>Chave</th><th>Valor</th><th>Ambiente</th></tr>
+      <tr><td class="k">API_URL</td><td><input value="https://qa.api.wolffox…" style="width:200px"></td><td><select><option>qa</option></select></td></tr>
+      <tr><td class="k">KEYCLOAK_URL</td><td><input value="http://localhost:8080" style="width:200px"></td><td><select><option>dev</option></select></td></tr>
+      <tr><td class="k">NEW_FLAG <span class="warn">⚠</span></td><td><input value="true" style="width:200px"></td><td><select><option>qa</option></select></td></tr>
+      <tr><td><input placeholder="nova chave" style="width:110px"></td><td><input placeholder="valor" style="width:200px"></td><td><select><option>dev</option></select> <button class="btn">＋</button></td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="opt" data-choice="both" onclick="toggleSelect(this)">
+  <h3>C · Os dois</h3>
+  <p class="desc">Árvore lateral (A) pra trocar rápido no dia a dia; painel (B) abre ao cadastrar / editar / importar.</p>
+</div>

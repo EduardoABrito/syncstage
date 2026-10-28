@@ -1,0 +1,26 @@
+{
+  "name": "syncstage",
+  "displayName": "syncstage",
+  "publisher": "eduardoabrito",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./out/src/extension.js",
+  "l10n": "./l10n",
+  "activationEvents": [
+    "workspaceContains:.syncstage/schema.json",
+    "onCommand:syncstage.openPanel"
+  ],
+  "scripts": {
+    "build": "tsc -p . && tsc -p tsconfig.webview.json",
+    "test": "tsc -p . && node --test \"out/test/**/*.test.js\"",
+    "package": "pnpm build && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "^7.0.2"
+  }
+}

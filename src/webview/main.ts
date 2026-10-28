@@ -44,22 +44,56 @@ function envSelect(envs: string[], current: string | undefined, onChange?: (env:
   if (onChange) s.addEventListener('change', () => onChange(s.value));
   return s;
 }
+const field = <T extends HTMLElement>(e: T): T => { e.classList.add('field'); return e; };
 const show = (v: string | undefined): string => (v === undefined ? '' : eye ? v : MASK);
 
+// Re-render replaces the DOM; carry over an in-progress edit (value, focus, caret) of the focused
+// inline input, matched by its data-ss id. `rendering` mutes blur handlers fired by the teardown.
+let rendering = false;
 function render(): void {
+  const f = document.activeElement;
+  const kept = f instanceof HTMLInputElement && f.dataset.ss
+    ? { id: f.dataset.ss, value: f.value, a: f.selectionStart, b: f.selectionEnd } : undefined;
+  rendering = true;
   app.replaceChildren();
-  if (!projects.length) return;
-  if (!projects.some((p) => p.root === tab)) tab = projects[0].root;
-  const active = projects.find((p) => p.root === tab) as ProjectView;
-
-  if (projects.length > 1) {
-    const bar = el('div', 'tabs');
-    for (const p of projects) {
-      bar.append(button(p.name, () => { tab = p.root; save(); render(); }, p.root === tab ? 'tab active' : 'tab'));
-    }
-    app.append(bar);
+  if (projects.length) {
+    if (!projects.some((p) => p.root === tab)) tab = projects[0].root;
+    const active = projects.find((p) => p.root === tab) as ProjectView;
+    app.append(renderPicker(active), renderProject(active));
   }
-  app.append(renderProject(active));
+  if (kept) {
+    const n = Array.from(app.querySelectorAll('input')).find((i) => i.dataset.ss === kept.id);
+    if (n) {
+      n.value = kept.value;
+      n.focus();
+      try { n.setSelectionRange(kept.a, kept.b); } catch { /* input type without selection */ }
+    }
+  }
+  rendering = false;
+}
+
+function renderPicker(active: ProjectView): HTMLElement {
+  const wrap = el('div', 'picker');
+  const input = field(el('input'));
+  input.type = 'text';
+  input.setAttribute('list', 'ss-projects');
+  input.placeholder = t('Search project');
+  input.dataset.ss = 'picker';
+  input.value = active.name;
+  const list = el('datalist');
+  list.id = 'ss-projects';
+  for (const p of [...projects].sort((a, b) => a.name.localeCompare(b.name))) {
+    const o = el('option');
+    o.value = p.name;
+    list.append(o);
+  }
+  input.addEventListener('input', () => {
+    const hit = projects.find((p) => p.name === input.value);
+    if (hit && hit.root !== tab) { tab = hit.root; save(); render(); }
+  });
+  input.addEventListener('blur', () => { if (!rendering) input.value = (projects.find((p) => p.root === tab) ?? active).name; });
+  wrap.append(input, list);
+  return wrap;
 }
 
 function renderProject(v: ProjectView): HTMLElement {
@@ -87,6 +121,10 @@ function renderProject(v: ProjectView): HTMLElement {
   const head = el('tr');
   for (const h of ['Key', 'Value', 'Environment']) head.append(el('th', undefined, t(h)));
   head.append(el('th'));
+  head.children[0].className = 'c-key';
+  head.children[1].className = 'c-value';
+  head.children[2].className = 'c-env';
+  head.children[3].className = 'c-act';
   const thead = el('thead');
   thead.append(head);
   table.append(thead);
@@ -170,12 +208,30 @@ function renderRow(v: ProjectView, key: string, sel: string, byEnv: Record<strin
   const tr = el('tr');
   tr.append(el('td', 'key', key));
   const val = el('td', 'value');
-  val.append(el('span', undefined, show(Object.hasOwn(byEnv, sel) ? byEnv[sel] : undefined)));
-  if (v.project!.values.unregistered.includes(key)) val.append(el('span', 'badge warn', '⚠ ' + t('not registered')));
-  if (v.missing.includes(key)) val.append(el('span', 'badge', t('missing in {0}').replace('{0}', sel)));
+  const wrap = el('div', 'value-wrap');
+  let old = Object.hasOwn(byEnv, sel) ? byEnv[sel] : '';
+  const input = field(el('input'));
+  input.type = eye ? 'text' : 'password';
+  input.value = old;
+  input.dataset.ss = `value\0${v.root}\0${key}`;
+  const commit = (): void => {
+    if (rendering || input.value === old) return;
+    if (input.value === '' && old !== '') { input.value = old; return; } // clearing lives in the editor
+    old = input.value;
+    send({ type: 'saveKey', root: v.root, key, values: { [sel]: old } });
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') input.value = old;
+  });
+  input.addEventListener('blur', commit);
+  wrap.append(input);
+  if (v.project!.values.unregistered.includes(key)) wrap.append(el('span', 'badge warn', '⚠ ' + t('not registered')));
+  if (v.missing.includes(key)) wrap.append(el('span', 'badge', t('missing in {0}').replace('{0}', sel)));
+  val.append(wrap);
   tr.append(val);
   const envTd = el('td');
-  envTd.append(envSelect(envs, sel, (env) => send({ type: 'select', root: v.root, key, env })));
+  envTd.append(field(envSelect(envs, sel, (env) => send({ type: 'select', root: v.root, key, env }))));
   tr.append(envTd);
   const id = `${v.root}\0${key}`;
   const edit = el('td');
@@ -191,8 +247,8 @@ function renderEditor(v: ProjectView, key: string, byEnv: Record<string, string>
   td.colSpan = 4;
   const inputs = new Map<string, HTMLInputElement>();
   for (const env of envs) {
-    const label = el('label', 'field', env);
-    const input = el('input');
+    const label = el('label', 'editor-field', env);
+    const input = field(el('input'));
     input.type = eye ? 'text' : 'password';
     input.value = Object.hasOwn(byEnv, env) ? byEnv[env] : '';
     inputs.set(env, input);
@@ -215,12 +271,12 @@ function renderEditor(v: ProjectView, key: string, byEnv: Record<string, string>
 
 function renderAddRow(v: ProjectView, envs: string[]): HTMLElement {
   const tr = el('tr', 'add');
-  const k = el('input');
+  const k = field(el('input'));
   k.placeholder = t('new key');
-  const val = el('input');
+  const val = field(el('input'));
   val.placeholder = t('value');
   val.type = eye ? 'text' : 'password';
-  const env = envSelect(envs, envs[0]);
+  const env = field(envSelect(envs, envs[0]));
   const add = (): void => {
     const key = k.value.trim();
     if (!key) return;

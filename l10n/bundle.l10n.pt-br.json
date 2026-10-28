@@ -22,6 +22,7 @@
   "+ Environment": "+ Ambiente",
   "Rename": "Renomear",
   "Remove": "Remover",
+  "Search project": "Buscar projeto",
   "Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.": "Carregado de {0} como {1} — ainda não salvo. A primeira alteração cria .syncstage/.",
   "{0} changed outside syncstage — {1} keys": "{0} alterado fora do syncstage — {1} chaves",
   "Review": "Revisar",

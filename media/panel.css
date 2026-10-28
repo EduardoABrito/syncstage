@@ -1,7 +1,4 @@
 body { padding: 12px 16px; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
-.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--vscode-panel-border); margin-bottom: 12px; }
-.tab { background: transparent; color: var(--vscode-foreground); border: none; border-bottom: 2px solid transparent; padding: 6px 12px; cursor: pointer; opacity: 0.7; }
-.tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); }
 button { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; padding: 4px 10px; cursor: pointer; font-family: inherit; }
 button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -26,15 +23,22 @@ input:focus, select:focus, button:focus-visible { outline: 1px solid var(--vscod
 .change-env { color: var(--vscode-descriptionForeground); }
 .change-before, .change-after { font-family: var(--vscode-editor-font-family); }
 .actions { display: flex; gap: 8px; margin-top: 8px; }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.c-key { width: 30%; } .c-value { width: 45%; } .c-env { width: 15%; } .c-act { width: 10%; }
 th { text-align: left; font-weight: 600; color: var(--vscode-descriptionForeground); padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
 td { padding: 4px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
-td.key { font-family: var(--vscode-editor-font-family); }
+td.key { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.value { font-family: var(--vscode-editor-font-family); }
-td input { width: 100%; box-sizing: border-box; }
+td { overflow: hidden; }
+.field { width: 100%; max-width: 32em; min-width: 0; box-sizing: border-box; }
+.picker { margin-bottom: 12px; }
+.picker .field { max-width: 24em; }
+.value-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.value-wrap .field { flex: 1 1 auto; }
+.value-wrap .badge { flex: none; margin-left: 0; white-space: nowrap; }
 .badge { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 0.85em; font-family: var(--vscode-font-family); background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
 .badge.warn { background: var(--vscode-inputValidation-warningBackground); color: var(--vscode-editorWarning-foreground); border: 1px solid var(--vscode-inputValidation-warningBorder); }
 tr.editor td { background: var(--vscode-editorWidget-background); }
-.field { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.field input { flex: 1; }
+.editor-field { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.editor-field input { flex: 1; }
 tr.add td { border-bottom: none; }

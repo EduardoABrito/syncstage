@@ -198,6 +198,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   /** save, then either queue conflicts for review or sync the target */
   async function finishImport(root: string, project: Project, conflicts: Change[]): Promise<void> {
+    // every import path ends here: never save/commit over a manual review the user hasn't resolved
+    if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first'));
     await save(root, project);
     if (conflicts.length) {
       pending.set(root, { kind: 'import', changes: conflicts });
@@ -260,7 +262,6 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   /** merge a validated config into a project that is already persisted */
   async function applyConfig(root: string, cfg: Config): Promise<Change[]> {
-    if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first')); // finishImport would discard it
     const merged = mergeConfig(await okProject(root), cfg);
     await finishImport(root, merged.project, merged.conflicts);
     return merged.conflicts;
@@ -322,12 +323,11 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const root = matched.get(key);
       if (root === undefined) continue;
       try {
-        if (pending.get(root)?.kind === 'manual') { skips.push({ key, reason: reasons.pending }); continue; }
         if (!(await mutable(root))) { skips.push({ key, reason: reasons.cancelled }); continue; } // per-project gate
         if ((await applyConfig(root, config)).length) review.push(projects.find(x => x.root === root)?.name ?? key);
         done++;
       } catch (e) {
-        skips.push({ key, reason: `${reasons.invalid}: ${errMsg(e)}` });
+        skips.push({ key, reason: pending.get(root)?.kind === 'manual' ? reasons.pending : `${reasons.invalid}: ${errMsg(e)}` });
       }
     }
     const list = skips.map(x => `${x.key} (${x.reason})`).join(', ');

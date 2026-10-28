@@ -1,46 +1,84 @@
 # syncstage
 
-VS Code extension that keeps per-project `.env` values for each environment (dev, staging, prod…) and writes the selected one to your target file. No runtime dependencies.
+Switch your `.env` between dev, qa and main per key, across every project in your workspace.
 
-## What it does
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![VS Code ^1.90](https://img.shields.io/badge/VS%20Code-%5E1.90-blue)
 
-- Define environments and keys per project in a panel (command: `syncstage: Open panel`, or click the syncstage icon in the activity bar).
-- Choose an environment per key, or switch every key at once with "All keys →"; the target file is updated immediately.
-- Import an existing `.env` with a conflict review, or generate the target from the schema.
-- Edits made to the target outside syncstage are detected and offered for review.
-- UI in English and pt-BR.
-- Activates automatically when the workspace contains `.syncstage/schema.json`.
+![syncstage panel](docs/images/panel.png)
 
-## Files in `.syncstage/`
+## Why
 
-| File | Git | Content |
-|---|---|---|
-| `schema.json` | committed | environments, keys, target file name. **No values.** |
-| `values.json` | local only | the actual values. Auto-added to `.gitignore`. |
+In a workspace with several services, each `.env` points at a different mix of local, QA and production-like endpoints. Editing those files by hand is slow and error-prone. syncstage keeps one value per key per environment, lets you pick which environment each key uses, and writes the result to the project's `.env`.
 
-## Target file
+## Features
 
-The target defaults to `.env`; set it per project in `schema.json` (e.g. `.env.local` for Next.js).
+- **Per-key environment switch.** Each key has its own dropdown; the target file updates immediately.
+- **All keys.** Switch every key of a project to one environment in a single click.
+- **Inline value edit.** Edit the active value in the table, or open the editor (pencil) to set every environment at once.
+- **Multi-project discovery.** Finds projects (folders with a `.env` or `.syncstage/schema.json`) in all workspace folders, including nested ones.
+- **Searchable project picker.** Type to filter, arrow keys and Enter to choose.
 
-> **Warning:** if the target file is tracked by git, its secrets would be committed. syncstage warns and asks before writing; consider switching the target to `.env.local`. It never edits `.gitignore` for the target itself.
+  ![Project picker](docs/images/picker.png)
 
-## Install from .vsix
+- **Import `.env`.** Import an existing file into an environment. New keys are added; differing values are never overwritten silently, they go to review.
+- **Manual-edit detection.** If the target file is changed outside syncstage, the differences are offered for review.
+
+  ![Review changes](docs/images/review.png)
+
+- **Draft from existing `.env`.** A project with only a `.env` is shown as a draft; nothing is saved until your first change.
+
+  ![Draft](docs/images/draft.png)
+
+- **Generate `.env`.** Rewrite the target file from the current selections on demand.
+- **Export / import config.** Per project, or for the whole workspace (projects are matched by folder name). Choose structure only or include values.
+- **Undo / redo** per project (up to 50 steps, kept for the session).
+- **Languages:** English and Portuguese (pt-BR).
+- Works in VS Code, Cursor and Antigravity.
+
+![Value editor](docs/images/editor.png)
+
+## Install
+
+1. Download `syncstage-0.1.0.vsix` from the [Releases page](https://github.com/eduardoabrito/syncstage/releases/latest).
+2. In the Extensions view, open the `…` menu and choose **Install from VSIX…**, or run:
 
 ```bash
 code --install-extension syncstage-0.1.0.vsix
 ```
 
-Or: Extensions view → `…` menu → **Install from VSIX…**
+## Usage
 
-## Build
+Click the syncstage icon in the activity bar, or run **syncstage: Open panel** from the command palette. The extension also activates when the workspace contains `.syncstage/schema.json`.
+
+Pick a project, then choose an environment per key or for all keys. Values are masked until you tick **Show values**.
+
+## How data is stored
+
+| File | Git | Content |
+|---|---|---|
+| `.syncstage/schema.json` | commit it | target file, environments, key names. No values. |
+| `.syncstage/values.json` | local only | the values and current selections. Added to `.gitignore` automatically. |
+
+The target file defaults to `.env` and can be changed per project in `schema.json`, for example to `.env.local`.
+
+## Safety
+
+- Nothing is written when you open the panel; a project is created on your first change.
+- If the target file is tracked by git, syncstage asks before the first write (continue or change target).
+- Writes are refused if the target is a symlink or resolves outside the project folder.
+- Existing values are never overwritten silently: import conflicts and manual edits go to a review step.
+- Exporting a config with values warns if the destination is not gitignored.
+
+## Development
 
 ```bash
 pnpm install
-pnpm build      # compile extension + webview
-pnpm test       # compile + node --test
+pnpm build      # compile extension and webview
+pnpm test       # compile and run node --test
 pnpm package    # build and produce syncstage-0.1.0.vsix
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)

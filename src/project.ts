@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isValidKey } from './core/dotenv';
 import { draftProject, emptyProject, validate, type Project, type Schema, type Values } from './core/model';
 
@@ -17,6 +17,15 @@ const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 async function readOpt(file: string): Promise<string | undefined> {
   try { return await readFile(file, 'utf8'); } catch (e) { if (isEnoent(e)) return undefined; throw e; }
+}
+
+/** `.env` / `.syncstage/schema.json` paths inside workspace folder `base` -> sorted unique project roots.
+ *  The folder itself is a project only when nothing nested was found. */
+export function projectRoots(base: string, paths: string[]): string[] {
+  const nested = paths
+    .map(p => (basename(p) === 'schema.json' ? dirname(dirname(p)) : dirname(p)))
+    .filter(r => r.startsWith(base + sep));
+  return nested.length ? [...new Set(nested)].sort() : [base];
 }
 
 export async function load(root: string): Promise<LoadResult> {

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { addKey, emptyProject } from '../src/core/model';
-import { ensureGitignore, init, isTrackedByGit, load, readTarget, targetPath, writeTarget } from '../src/project';
+import { ensureGitignore, init, isTrackedByGit, load, projectRoots, readTarget, targetPath, writeTarget } from '../src/project';
 
 test('init creates files and gitignore entry once', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ss-'));
@@ -118,4 +118,16 @@ test('loadDraft ignores a symlinked or oversized .env and never reads the link t
   await rm(join(dir, '.env'));
   await writeFile(join(dir, '.env'), 'A=' + 'x'.repeat(1024 * 1024) + '\n');
   assert.equal(await loadDraft(dir), undefined);
+});
+
+test('projectRoots: nested projects replace the workspace root, even if it has .syncstage/.env', () => {
+  assert.deepEqual(projectRoots('/W', [
+    '/W/Notify/wfe-notify-api/.env', '/W/.syncstage/schema.json', '/W/.env', '/W/Admin/wfe-admin-api/.env',
+    '/W/Admin/wfe-admin-api/.syncstage/schema.json', '/W/Admin/wfe-admin-api/.env', '/Other/x/.env',
+  ]), ['/W/Admin/wfe-admin-api', '/W/Notify/wfe-notify-api']);
+});
+
+test('projectRoots: root alone or nothing found -> the root itself', () => {
+  assert.deepEqual(projectRoots('/W', ['/W/.env', '/W/.syncstage/schema.json']), ['/W']);
+  assert.deepEqual(projectRoots('/W', []), ['/W']);
 });

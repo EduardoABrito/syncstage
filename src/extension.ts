@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { sep } from 'node:path';
 import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
 import { Change, applyChanges, importDiff, manualDiff } from './core/diff';
@@ -9,7 +10,7 @@ import type { FromWebview, ProjectView } from './core/protocol';
 import { SelfWrites, renderTarget } from './core/sync';
 import { gate } from './gate';
 import { SyncPanel } from './panel';
-import { LoadResult, init, isTrackedByGit, load, loadDraft, readTarget, save, targetPath, writeTarget } from './project';
+import { LoadResult, init, isTrackedByGit, load, loadDraft, projectRoots, readTarget, save, targetPath, writeTarget } from './project';
 
 const t = vscode.l10n.t;
 type Pending = { kind: 'import' | 'manual'; changes: Change[] };
@@ -22,21 +23,21 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const drafts = new Map<string, Project>(); // roots with a target but no .syncstage/: shown, not persisted
   const watchers = new Map<string, { target: string; w: vscode.FileSystemWatcher }>();
   const folders = (): readonly vscode.WorkspaceFolder[] => vscode.workspace.workspaceFolders ?? [];
+  let projects: { root: string; name: string }[] = []; // discovered roots (see refresh)
   const fail = (e: unknown): void => { void vscode.window.showErrorMessage(errMsg(e)); };
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   status.command = 'syncstage.openPanel';
 
-  const views = (): ProjectView[] => folders().map(f => {
-    const root = f.uri.fsPath;
+  const views = (): ProjectView[] => projects.map(({ root, name }): ProjectView => {
     const s = states.get(root) ?? { status: 'missing' as const };
-    const base = { name: f.name, root, missing: [] as string[], pending: pending.get(root) };
+    const base = { name, root, missing: [] as string[], pending: pending.get(root) };
     const d = s.status === 'missing' ? drafts.get(root) : undefined;
     if (d) return { ...base, status: 'ok', project: d, draft: true, missing: resolve(d).missing };
     if (s.status === 'ok') return { ...base, status: 'ok', project: s.project, missing: resolve(s.project).missing };
     if (s.status === 'invalid') return { ...base, status: 'invalid', error: `${s.file}: ${s.message}` };
     return { ...base, status: 'missing' };
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   const confirmed = new Set<string>(); // roots whose git-tracked target was confirmed this session
   let queue: Promise<void> = Promise.resolve();
@@ -47,19 +48,38 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   function updateStatus(): void {
     const ed = vscode.window.activeTextEditor;
-    const owner = ed && vscode.workspace.getWorkspaceFolder(ed.document.uri)?.uri.fsPath;
+    const file = ed?.document.uri.scheme === 'file' ? ed.document.uri.fsPath : undefined;
+    const owner = file === undefined ? undefined : projects // deepest project root containing the file
+      .filter(x => file.startsWith(x.root + sep)).sort((a, b) => b.root.length - a.root.length)[0]?.root;
     const okOf = (root?: string): Project | undefined => {
       const s = root === undefined ? undefined : states.get(root);
       return s?.status === 'ok' ? s.project : undefined;
     };
     let p = okOf(owner);
-    if (!p) for (const f of folders()) { p = okOf(f.uri.fsPath); if (p) break; }
+    if (!p) for (const x of projects) { p = okOf(x.root); if (p) break; }
     status.text = p ? `$(layers) ${defaultEnv(p)}` : '$(layers) syncstage';
     status.show();
   }
 
+  /** projects = dirs holding .env / .syncstage/schema.json inside a workspace folder; a folder with none nested is itself one */
+  async function discover(): Promise<{ root: string; name: string }[]> {
+    const found = await vscode.workspace.findFiles(
+      '**/{.env,.syncstage/schema.json}', '**/{node_modules,.git,out,dist,build,.next}/**', 500);
+    const paths = found.map(u => u.fsPath);
+    const many = folders().length > 1;
+    const out = new Map<string, string>();
+    for (const f of folders()) {
+      const base = f.uri.fsPath;
+      for (const r of projectRoots(base, paths)) {
+        out.set(r, r === base ? f.name : (many ? `${f.name}/` : '') + r.slice(base.length + 1).split(sep).join('/'));
+      }
+    }
+    return [...out].map(([root, name]) => ({ root, name }));
+  }
+
   async function refresh(): Promise<void> {
-    const roots = folders().map(f => f.uri.fsPath);
+    projects = await discover();
+    const roots = projects.map(x => x.root);
     for (const r of [...states.keys()]) if (!roots.includes(r)) { states.delete(r); pending.delete(r); drafts.delete(r); }
     for (const root of roots) {
       let s = await load(root);
@@ -72,6 +92,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       if (d) drafts.set(root, d); else drafts.delete(root);
     }
     syncWatchers();
+    rewatchState();
     updateStatus();
     panel.post();
   }
@@ -82,13 +103,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const target = (s?.status === 'ok' ? s.project : drafts.get(root))?.schema.target;
       if (target !== w.target) { w.w.dispose(); watchers.delete(root); }
     }
-    for (const f of folders()) {
-      const root = f.uri.fsPath;
+    for (const { root } of projects) {
       const s = states.get(root);
       const p = s?.status === 'ok' ? s.project : drafts.get(root);
       if (!p || watchers.has(root)) continue;
       const target = p.schema.target;
-      const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(f, target));
+      const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, target));
       const on = (): void => { void enqueue(() => onTargetChanged(root)); };
       w.onDidChange(on); w.onDidCreate(on);
       w.onDidDelete(() => { if (drafts.has(root)) on(); }); // a deleted draft source must disappear
@@ -283,26 +303,31 @@ export function activate(ctx: vscode.ExtensionContext): void {
     home,
     home.onDidChangeVisibility(e => { if (e.visible) void vscode.commands.executeCommand('syncstage.openPanel'); }),
     vscode.window.onDidChangeActiveTextEditor(updateStatus),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => { void enqueue(async () => { await refresh(); rewatchState(); }); }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => { void enqueue(refresh); }),
     { dispose: () => { for (const w of watchers.values()) w.w.dispose(); watchers.clear(); } },
   );
 
   // `.syncstage/*.json` watchers: reload state (our own saves trigger this too — harmless)
   const stateWatchers = new Map<string, vscode.FileSystemWatcher>();
   function rewatchState(): void {
-    const roots = new Set(folders().map(f => f.uri.fsPath));
+    const roots = new Set(projects.map(x => x.root));
     for (const [r, w] of [...stateWatchers]) if (!roots.has(r)) { w.dispose(); stateWatchers.delete(r); }
-    for (const f of folders()) {
-      if (stateWatchers.has(f.uri.fsPath)) continue;
-      const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(f, '.syncstage/*.json'));
+    for (const { root } of projects) {
+      if (stateWatchers.has(root)) continue;
+      const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, '.syncstage/*.json'));
       const on = (): void => { void enqueue(refresh); };
       w.onDidChange(on); w.onDidCreate(on); w.onDidDelete(on);
-      stateWatchers.set(f.uri.fsPath, w);
+      stateWatchers.set(root, w);
     }
   }
   ctx.subscriptions.push({ dispose: () => { for (const w of stateWatchers.values()) w.dispose(); stateWatchers.clear(); } });
 
-  rewatchState();
+  // projects appear/disappear with their .env / schema.json
+  const discovery = vscode.workspace.createFileSystemWatcher('**/{.env,.syncstage/schema.json}');
+  discovery.onDidCreate(() => { void enqueue(refresh); });
+  discovery.onDidDelete(() => { void enqueue(refresh); });
+  ctx.subscriptions.push(discovery);
+
   void enqueue(refresh);
 }
 

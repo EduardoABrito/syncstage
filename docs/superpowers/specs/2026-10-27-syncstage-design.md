@@ -1,7 +1,7 @@
 # syncstage — Design
 
 Date: 2026-10-27
-Status: draft, awaiting approval
+Status: approved 2026-10-27
 
 ## Intent / why
 

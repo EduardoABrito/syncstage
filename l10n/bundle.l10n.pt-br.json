@@ -56,5 +56,8 @@
   "not found": "não encontrado",
   "ambiguous": "ambíguo",
   "cancelled": "cancelado",
-  "invalid project": "projeto inválido"
+  "invalid project": "projeto inválido",
+  "pending review": "revisão pendente",
+  "Resolve the pending changes first": "Resolva as alterações pendentes primeiro",
+  "File too large": "Arquivo grande demais"
 }

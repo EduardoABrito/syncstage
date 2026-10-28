@@ -222,7 +222,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const MAX_CONFIG_BYTES = 10 * 1024 * 1024; // untrusted file: refuse before JSON.parse
 
   async function readJson(path: string): Promise<unknown> {
-    if ((await stat(path)).size > MAX_CONFIG_BYTES) throw new Error('File too large');
+    if ((await stat(path)).size > MAX_CONFIG_BYTES) throw new Error(t('File too large'));
     return JSON.parse(await readFile(path, 'utf8'));
   }
 
@@ -236,7 +236,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   /** secrets headed for a file inside a folder that git would not ignore need an explicit yes; false = cancelled */
   async function confirmSecretsPath(dirs: string[], file: string): Promise<boolean> {
     const dir = dirs.find(d => file.startsWith(d + sep));
-    if (dir === undefined || await isIgnoredByGit(dir, file)) return true;
+    if (dir === undefined || await isIgnoredByGit(file)) return true;
     const yes = t('Save anyway');
     const a = await vscode.window.showWarningMessage(
       t('{0} is not gitignored — secret values could be committed. Save anyway?', file.slice(dir.length + 1)), { modal: true }, yes);
@@ -260,6 +260,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   /** merge a validated config into a project that is already persisted */
   async function applyConfig(root: string, cfg: Config): Promise<Change[]> {
+    if (pending.get(root)?.kind === 'manual') throw new Error(t('Resolve the pending changes first')); // finishImport would discard it
     const merged = mergeConfig(await okProject(root), cfg);
     await finishImport(root, merged.project, merged.conflicts);
     return merged.conflicts;
@@ -312,7 +313,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }
     const { matched, skipped } = matchWorkspace(entries.map(e => e.key), projects.map(x => ({ root: x.root, rel: x.name })));
     const reasons: Record<string, string> = {
-      'not found': t('not found'), ambiguous: t('ambiguous'), cancelled: t('cancelled'), invalid: t('invalid project'),
+      'not found': t('not found'), ambiguous: t('ambiguous'), cancelled: t('cancelled'), pending: t('pending review'), invalid: t('invalid project'),
     };
     const skips = skipped.map(x => ({ key: x.key, reason: reasons[x.reason] }));
     const review: string[] = [];
@@ -321,6 +322,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const root = matched.get(key);
       if (root === undefined) continue;
       try {
+        if (pending.get(root)?.kind === 'manual') { skips.push({ key, reason: reasons.pending }); continue; }
         if (!(await mutable(root))) { skips.push({ key, reason: reasons.cancelled }); continue; } // per-project gate
         if ((await applyConfig(root, config)).length) review.push(projects.find(x => x.root === root)?.name ?? key);
         done++;

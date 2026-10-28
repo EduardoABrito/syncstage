@@ -81,7 +81,15 @@ export type SkipReason = 'not found' | 'ambiguous';
 export function workspaceKeys(projects: WsProject[]): Map<string, string> {
   const count = new Map<string, number>();
   for (const p of projects) count.set(basename(p.root), (count.get(basename(p.root)) ?? 0) + 1);
-  return new Map(projects.map(p => [p.root, (count.get(basename(p.root)) ?? 0) > 1 ? p.rel : basename(p.root)]));
+  const out = new Map<string, string>();
+  const taken = new Set<string>();
+  for (const p of projects) {
+    let key = (count.get(basename(p.root)) ?? 0) > 1 ? p.rel : basename(p.root);
+    if (taken.has(key)) key = p.root; // same rel in two workspace folders: the full path is unique
+    taken.add(key);
+    out.set(p.root, key);
+  }
+  return out;
 }
 
 /** Maps file entries onto projects: exact rel first, then unique folder name. A root is claimed once. */
@@ -90,12 +98,14 @@ export function matchWorkspace(entryKeys: string[], projects: WsProject[]):
   const matched = new Map<string, string>();
   const claimed = new Set<string>();
   for (const k of entryKeys) {
-    const hit = projects.find(p => p.rel === k && !claimed.has(p.root));
+    const hits = projects.filter(p => p.rel === k);
+    const hit = hits.length === 1 && !claimed.has(hits[0].root) ? hits[0] : undefined;
     if (hit) { matched.set(k, hit.root); claimed.add(hit.root); }
   }
   const skipped: { key: string; reason: SkipReason }[] = [];
   for (const k of entryKeys) {
     if (matched.has(k)) continue;
+    if (projects.filter(p => p.rel === k).length > 1) { skipped.push({ key: k, reason: 'ambiguous' }); continue; }
     const name = k.split(/[\\/]/).pop() as string;
     const cands = projects.filter(p => basename(p.root) === name);
     if (cands.length === 0) skipped.push({ key: k, reason: 'not found' });
@@ -125,7 +135,7 @@ export function parseWorkspaceConfig(raw: unknown): { key: string; config: Confi
   const keys = Object.keys(w);
   if (keys.length > MAX_PROJECTS) throw new Error(`Too many projects (max ${MAX_PROJECTS})`);
   return keys.map(key => {
-    if (key === '' || key.includes('\0') || key in Object.prototype) throw new Error(`Invalid project name: "${key.replace('\0', '')}"`);
+    if (key === '' || key.includes('\0') || key in Object.prototype) throw new Error(`Invalid project name: "${key.replaceAll('\0', '')}"`);
     const body = (w as Record<string, unknown>)[key];
     if (typeof body !== 'object' || body === null || Array.isArray(body)) throw new Error(`Invalid config for "${key}"`);
     try { return { key, config: parseConfig({ ...body, syncstage: 1 }) }; }

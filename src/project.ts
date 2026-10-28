@@ -99,10 +99,11 @@ export function isTrackedByGit(root: string, relPath: string): Promise<boolean> 
   });
 }
 
-/** False only when git says the path is not ignored (exit 1); outside a repo nothing can be committed. */
-export function isIgnoredByGit(root: string, path: string): Promise<boolean> {
+/** False only when git says the path is not ignored (exit 1); outside a repo nothing can be committed.
+ *  Runs in the file's own directory: the workspace folder may be a plain parent of several repos. */
+export function isIgnoredByGit(path: string): Promise<boolean> {
   return new Promise(res => {
-    execFile('git', ['check-ignore', '-q', '--', path], { cwd: root }, err => res(!(err && (err as { code?: unknown }).code === 1)));
+    execFile('git', ['check-ignore', '-q', '--', path], { cwd: dirname(path) }, err => res(!(err && (err as { code?: unknown }).code === 1)));
   });
 }
 

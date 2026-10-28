@@ -190,3 +190,16 @@ test('workspace round trip: export 2 projects, parse, match all', () => {
   assert.deepEqual(parsed[0].config.keys, sample().schema.keys);
   assert.equal(JSON.parse(exportWorkspace([{ key: 'one', project: sample() }], false)).workspace.one.values, undefined);
 });
+
+test('workspaceKeys: keys are always unique (same name and rel falls back to root)', () => {
+  const k = workspaceKeys([P('/x/app', 'app'), P('/y/app', 'app'), P('/z/web', 'web')]);
+  assert.equal(new Set(k.values()).size, 3);
+  assert.equal(k.get('/y/app'), '/y/app');
+  assert.equal(k.get('/z/web'), 'web');
+});
+
+test('matchWorkspace: duplicate rel is ambiguous', () => {
+  const r = matchWorkspace(['app'], [P('/x/app', 'app'), P('/y/app', 'app')]);
+  assert.equal(r.matched.size, 0);
+  assert.deepEqual(r.skipped, [{ key: 'app', reason: 'ambiguous' }]);
+});

@@ -4,7 +4,8 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { addKey, emptyProject } from '../src/core/model';
-import { ensureGitignore, init, isTrackedByGit, load, projectRoots, readTarget, targetPath, writeTarget } from '../src/project';
+import { execFileSync } from 'node:child_process';
+import { ensureGitignore, init, isIgnoredByGit, isTrackedByGit, load, projectRoots, readTarget, targetPath, writeTarget } from '../src/project';
 
 test('init creates files and gitignore entry once', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ss-'));
@@ -130,4 +131,17 @@ test('projectRoots: nested projects replace the workspace root, even if it has .
 test('projectRoots: root alone or nothing found -> the root itself', () => {
   assert.deepEqual(projectRoots('/W', ['/W/.env', '/W/.syncstage/schema.json']), ['/W']);
   assert.deepEqual(projectRoots('/W', []), ['/W']);
+});
+
+test('isIgnoredByGit: evaluated in the file\'s own repo, even under a non-repo parent', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'ss-'));
+  try {
+    const sub = join(parent, 'repo');
+    await mkdir(sub);
+    execFileSync('git', ['init', '-q'], { cwd: sub });
+    await writeFile(join(sub, '.gitignore'), 'ignored.json\n');
+    assert.equal(await isIgnoredByGit(join(sub, 'syncstage-workspace.json')), false);
+    assert.equal(await isIgnoredByGit(join(sub, 'ignored.json')), true);
+    assert.equal(await isIgnoredByGit(join(parent, 'x.json')), true); // not a repo: nothing to commit
+  } finally { await rm(parent, { recursive: true, force: true }); }
 });

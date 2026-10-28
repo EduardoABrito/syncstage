@@ -21,6 +21,8 @@
   "Save": "Salvar",
   "Cancel": "Cancelar",
   "Delete key": "Excluir chave",
+  "Delete": "Apagar",
+  "Delete {0} and its values in all environments?": "Apagar {0} e seus valores em todos os ambientes?",
   "Edit": "Editar",
   "new key": "nova chave",
   "value": "valor",

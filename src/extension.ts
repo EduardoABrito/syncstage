@@ -454,7 +454,13 @@ export function activate(ctx: vscode.ExtensionContext): void {
         }
         return commit(m.root, addKey(p, m.key, m.value, m.env));
       }
-      case 'removeKey': return commit(m.root, removeKey(p, m.key));
+      case 'removeKey': {
+        const yes = t('Delete');
+        const a = await vscode.window.showWarningMessage(
+          t('Delete {0} and its values in all environments?', m.key), { modal: true }, yes);
+        if (a === yes) await commit(m.root, removeKey(p, m.key));
+        return;
+      }
       case 'resolve': return doResolve(m.root, m.accepted);
     }
   }

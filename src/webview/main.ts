@@ -333,7 +333,11 @@ function renderRow(v: ProjectView, key: string, sel: string, byEnv: Record<strin
   tr.append(envTd);
   const id = `${v.root}\0${key}`;
   const edit = el('td');
-  edit.append(button('✎', () => { if (editing.has(id)) editing.delete(id); else editing.add(id); render(); }, 'icon'));
+  const pencil = button('✎', () => { if (editing.has(id)) editing.delete(id); else editing.add(id); render(); }, 'icon');
+  pencil.title = pencil.ariaLabel = t('Edit');
+  const trash = button('🗑', () => { editing.delete(id); send({ type: 'removeKey', root: v.root, key }); }, 'icon danger');
+  trash.title = trash.ariaLabel = t('Delete key');
+  edit.append(pencil, trash);
   tr.append(edit);
   return tr;
 }

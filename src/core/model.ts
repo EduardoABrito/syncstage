@@ -1,4 +1,4 @@
-import { isValidKey } from './dotenv';
+import { isValidKey, parse, toMap } from './dotenv';
 
 export interface Schema { version: 1; target: string; environments: string[]; keys: string[] }
 export interface Values {
@@ -14,6 +14,18 @@ export function emptyProject(environments: string[] = ['dev', 'qa', 'main']): Pr
     schema: { version: 1, target: '.env', environments: [...environments], keys: [] },
     values: { version: 1, selected: {}, values: {}, unregistered: [] },
   };
+}
+
+/** In-memory project from an existing .env: every valid key, value in 'dev'. Nothing is persisted. */
+export function draftProject(text: string): Project {
+  const p = emptyProject();
+  for (const [k, v] of toMap(parse(text))) {
+    if (!isValidKey(k)) continue;
+    p.schema.keys.push(k);
+    p.values.selected[k] = 'dev';
+    p.values.values[k] = { dev: v };
+  }
+  return p;
 }
 
 const clone = (p: Project): Project => structuredClone(p);

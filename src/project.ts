@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isValidKey } from './core/dotenv';
-import { emptyProject, validate, type Project, type Schema, type Values } from './core/model';
+import { draftProject, emptyProject, validate, type Project, type Schema, type Values } from './core/model';
 
 export type LoadResult =
   | { status: 'ok'; project: Project }
@@ -36,6 +36,15 @@ export async function load(root: string): Promise<LoadResult> {
   } catch (e) {
     return { status: 'invalid', file, message: msg(e) };
   }
+}
+
+/** No .syncstage/values.json and a readable default target with keys → in-memory draft (nothing is written). */
+export async function loadDraft(root: string): Promise<Project | undefined> {
+  try {
+    if ((await readOpt(join(root, DIR, 'values.json'))) !== undefined) return undefined;
+    const d = draftProject(await readTarget(root, emptyProject()));
+    return d.schema.keys.length ? d : undefined;
+  } catch { return undefined; }
 }
 
 export async function save(root: string, p: Project): Promise<void> {

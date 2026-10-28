@@ -4,7 +4,8 @@ import type { Project } from './model';
 export interface ProjectView {
   name: string; root: string;
   status: 'ok' | 'missing' | 'invalid'; error?: string;
-  project?: Project; missing: string[]; // missing resolve()
+  project?: Project; draft?: boolean; // draft: loaded from the target, not saved yet
+  missing: string[]; // missing resolve()
   pending?: { kind: 'import' | 'manual'; changes: Change[] };
 }
 export type ToWebview = { type: 'state'; projects: ProjectView[]; strings: Record<string, string> };

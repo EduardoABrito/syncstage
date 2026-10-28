@@ -9,7 +9,7 @@ import type { FromWebview, ProjectView } from './core/protocol';
 import { SelfWrites, renderTarget } from './core/sync';
 import { gate } from './gate';
 import { SyncPanel } from './panel';
-import { LoadResult, init, isTrackedByGit, load, readTarget, save, targetPath, writeTarget } from './project';
+import { LoadResult, init, isTrackedByGit, load, loadDraft, readTarget, save, targetPath, writeTarget } from './project';
 
 const t = vscode.l10n.t;
 type Pending = { kind: 'import' | 'manual'; changes: Change[] };
@@ -19,6 +19,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const selfWrites = new SelfWrites();
   const states = new Map<string, LoadResult>();
   const pending = new Map<string, Pending>();
+  const drafts = new Map<string, Project>(); // roots with a target but no .syncstage/: shown, not persisted
   const watchers = new Map<string, { target: string; w: vscode.FileSystemWatcher }>();
   const folders = (): readonly vscode.WorkspaceFolder[] => vscode.workspace.workspaceFolders ?? [];
   const fail = (e: unknown): void => { void vscode.window.showErrorMessage(errMsg(e)); };
@@ -30,6 +31,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const root = f.uri.fsPath;
     const s = states.get(root) ?? { status: 'missing' as const };
     const base = { name: f.name, root, missing: [] as string[], pending: pending.get(root) };
+    const d = s.status === 'missing' ? drafts.get(root) : undefined;
+    if (d) return { ...base, status: 'ok', project: d, draft: true, missing: resolve(d).missing };
     if (s.status === 'ok') return { ...base, status: 'ok', project: s.project, missing: resolve(s.project).missing };
     if (s.status === 'invalid') return { ...base, status: 'invalid', error: `${s.file}: ${s.message}` };
     return { ...base, status: 'missing' };
@@ -57,13 +60,15 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   async function refresh(): Promise<void> {
     const roots = folders().map(f => f.uri.fsPath);
-    for (const r of [...states.keys()]) if (!roots.includes(r)) { states.delete(r); pending.delete(r); }
+    for (const r of [...states.keys()]) if (!roots.includes(r)) { states.delete(r); pending.delete(r); drafts.delete(r); }
     for (const root of roots) {
       let s = await load(root);
       if (s.status === 'ok') {
         try { targetPath(root, s.project); } catch (e) { s = { status: 'invalid', file: '.syncstage/schema.json', message: errMsg(e) }; }
       }
       states.set(root, s);
+      const d = s.status === 'missing' ? await loadDraft(root) : undefined;
+      if (d) drafts.set(root, d); else drafts.delete(root);
     }
     syncWatchers();
     updateStatus();
@@ -73,22 +78,25 @@ export function activate(ctx: vscode.ExtensionContext): void {
   function syncWatchers(): void {
     for (const [root, w] of [...watchers]) {
       const s = states.get(root);
-      const target = s?.status === 'ok' ? s.project.schema.target : undefined;
+      const target = (s?.status === 'ok' ? s.project : drafts.get(root))?.schema.target;
       if (target !== w.target) { w.w.dispose(); watchers.delete(root); }
     }
     for (const f of folders()) {
       const root = f.uri.fsPath;
       const s = states.get(root);
-      if (s?.status !== 'ok' || watchers.has(root)) continue;
-      const target = s.project.schema.target;
+      const p = s?.status === 'ok' ? s.project : drafts.get(root);
+      if (!p || watchers.has(root)) continue;
+      const target = p.schema.target;
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(f, target));
       const on = (): void => { void enqueue(() => onTargetChanged(root)); };
       w.onDidChange(on); w.onDidCreate(on);
+      w.onDidDelete(() => { if (drafts.has(root)) on(); }); // a deleted draft source must disappear
       watchers.set(root, { target, w });
     }
   }
 
   async function onTargetChanged(root: string): Promise<void> {
+    if (drafts.has(root)) return refresh(); // nothing stored yet: just rebuild the draft
     const s = states.get(root);
     if (s?.status !== 'ok') return;
     const content = await readTarget(root, s.project);
@@ -138,6 +146,17 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const s = await load(root);
     if (s.status !== 'ok') throw new Error(t('Project is not initialized or its syncstage files are invalid'));
     return s.project;
+  }
+
+  /** Project to mutate; a draft is persisted first (git-tracked gate, then init). Undefined = cancelled. */
+  async function mutable(root: string): Promise<Project | undefined> {
+    const d = (await load(root)).status === 'missing' ? await loadDraft(root) : undefined; // re-read: .syncstage/ may have appeared
+    if (!d) return okProject(root);
+    const q = await gate(confirmed, root, d, gateDeps(root));
+    if (!q) return undefined;
+    const p = await init(root, q);
+    await refresh();
+    return p;
   }
 
   async function commit(root: string, p: Project): Promise<void> {
@@ -202,7 +221,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     if (m.type === 'ready') { panel.post(); return; }
     if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
-    const p = await okProject(m.root); // never write for missing/invalid projects
+    const p = await mutable(m.root); // never write for missing/invalid projects
+    if (!p) return;
     switch (m.type) {
       case 'import': return doImport(m.root);
       case 'generate': {

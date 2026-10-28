@@ -32,3 +32,9 @@ test('update never writes invalid keys', async () => {
   const out = update(parse(''), new Map([['x\n[core]', ''], ['OK', '1']]), true);
   assert.equal(out, 'OK=1\n');
 });
+
+test('update keeps original text when the value is unchanged', () => {
+  const src = "A = 1\nC='lit $x'\nD=\"q\"\n";
+  assert.equal(update(parse(src), new Map([['A', '1'], ['C', 'lit $x'], ['D', 'q']]), false), src);
+  assert.equal(update(parse(src), new Map([['A', '2'], ['C', 'lit $x']]), false), "A=2\nC='lit $x'\nD=\"q\"\n");
+});

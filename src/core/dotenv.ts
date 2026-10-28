@@ -75,7 +75,7 @@ export function update(doc: DotenvDoc, updates: Map<string, string>, appendMissi
   doc.lines.forEach((l, i) => { if (l.kind === 'entry') last.set(l.key, i); });
   const out = doc.lines.map((l, i) => {
     if (l.kind === 'raw') return l.text;
-    return last.get(l.key) === i && updates.has(l.key)
+    return last.get(l.key) === i && updates.has(l.key) && updates.get(l.key) !== l.value // unchanged value keeps its original text/quoting
       ? `${l.exported ? 'export ' : ''}${l.key}=${formatValue(updates.get(l.key)!)}`
       : l.text;
   });

@@ -6,12 +6,13 @@ const STRINGS = [
   'All keys →', 'Import .env', 'Generate .env', 'Environment', 'Key', 'Value', 'Initialize syncstage',
   'not registered', 'missing in {0}', 'Show values', 'Save', 'Cancel', 'Delete key', 'new key', 'value',
   'Apply', 'Discard all', '(removed)', '(new)', 'Changes to review', '+ Environment', 'Rename', 'Remove',
+  'Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.',
 ];
 
 function strings(): Record<string, string> {
   const out: Record<string, string> = {};
   // the webview substitutes {0} itself, so keep the placeholder intact
-  for (const s of STRINGS) out[s] = vscode.l10n.t(s, ...(s.includes('{0}') ? ['{0}'] : []));
+  for (const s of STRINGS) out[s] = vscode.l10n.t(s, '{0}', '{1}');
   return out;
 }
 

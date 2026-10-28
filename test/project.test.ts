@@ -94,3 +94,16 @@ test('init reuses existing values.json without schema', async () => {
   await assert.rejects(init(dir), /values\.json/);
   assert.equal(await readFile(join(dir, '.syncstage/values.json'), 'utf8'), '{bad');
 });
+
+test('loadDraft: only for .env with keys and no values.json; writes nothing', async () => {
+  const { loadDraft } = await import('../src/project');
+  const dir = await mkdtemp(join(tmpdir(), 'ss-'));
+  assert.equal(await loadDraft(dir), undefined);
+  await writeFile(join(dir, '.env'), '# only a comment\n');
+  assert.equal(await loadDraft(dir), undefined);
+  await writeFile(join(dir, '.env'), 'A=1\n');
+  assert.deepEqual((await loadDraft(dir))?.schema.keys, ['A']);
+  assert.equal((await load(dir)).status, 'missing');
+  await mkdir(join(dir, '.syncstage')); await writeFile(join(dir, '.syncstage/values.json'), '{}');
+  assert.equal(await loadDraft(dir), undefined);
+});

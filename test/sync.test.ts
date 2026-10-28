@@ -15,3 +15,13 @@ test('SelfWrites recognises own content only', () => {
   assert.equal(s.isSelfWrite('/x/.env', 'A=1\n'), true);
   assert.equal(s.isSelfWrite('/x/.env', 'A=2\n'), false);
 });
+
+test('renderTarget(draftProject(text), text) never rewrites the user file', async () => {
+  const { draftProject } = await import('../src/core/model');
+  const texts = [
+    '# c\n\nA=1\nexport B="x y"\nC=\'lit $x\'\nD = "q" # t\nE="l1\nl2"\n',
+    '# c\r\nA=1\r\nexport B="x y"\r\nC=\'lit $x\'\r\nF=\r\n',
+    'A=1\nA=2\n',
+  ];
+  for (const t of texts) assert.equal(renderTarget(draftProject(t), t, 'sync'), t);
+});

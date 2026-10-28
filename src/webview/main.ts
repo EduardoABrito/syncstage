@@ -79,6 +79,8 @@ function renderProject(v: ProjectView): HTMLElement {
   const p = v.project;
   const envs = p.schema.environments;
   box.append(renderHeader(v, envs));
+  if (v.draft) box.append(el('div', 'banner', t('Loaded from {0} as {1} — not saved yet. Your first change creates .syncstage/.')
+    .replace('{0}', p.schema.target).replace('{1}', envs[0])));
   if (v.pending?.changes.length) box.append(renderPending(v));
 
   const table = el('table');

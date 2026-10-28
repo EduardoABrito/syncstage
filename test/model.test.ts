@@ -71,3 +71,12 @@ test('validate rejects hostile schema/values and renderTarget cannot inject line
   assert.throws(() => validate(v({ values: { [payload]: { dev: 'a' } } }), 'values'), /values/);
   assert.throws(() => validate(v({ values: { A: { dev: 1 } } }), 'values'), /values/);
 });
+
+test('draftProject: file-order keys in dev, comments/invalid skipped, nothing unregistered', async () => {
+  const { draftProject } = await import('../src/core/model');
+  const p = draftProject('# c\n\nB=2\nbad key=x\nA=1\nE=\n');
+  assert.deepEqual(p.schema.keys, ['B', 'A', 'E']);
+  assert.deepEqual(p.values.values, { B: { dev: '2' }, A: { dev: '1' }, E: { dev: '' } });
+  assert.deepEqual(p.values.selected, { B: 'dev', A: 'dev', E: 'dev' });
+  assert.deepEqual(p.values.unregistered, []);
+});

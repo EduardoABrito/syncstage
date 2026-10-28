@@ -25,9 +25,13 @@
   "{0} changed outside syncstage — {1} keys": "{0} alterado fora do syncstage — {1} chaves",
   "Review": "Revisar",
   "Import": "Importar",
-  "Import existing {0}?": "Importar {0} existente?",
   "New name for {0}": "Novo nome para {0}",
   "Remove environment {0}? Its values will be deleted.": "Remover o ambiente {0}? Os valores dele serão apagados.",
   "Project is not initialized or its syncstage files are invalid": "O projeto não está inicializado ou os arquivos do syncstage são inválidos",
-  "{0} is tracked by git — secrets may be committed": "{0} é rastreado pelo git — segredos podem ser commitados"
+  "Import existing {0} as {1}?": "Importar {0} existente como {1}?",
+  "{0} is tracked by git — secret values would be committed. Continue?": "{0} é rastreado pelo git — valores secretos seriam commitados. Continuar?",
+  "Continue": "Continuar",
+  "Change target": "Trocar destino",
+  "New target file": "Novo arquivo de destino",
+  "Unknown project folder": "Pasta de projeto desconhecida"
 }

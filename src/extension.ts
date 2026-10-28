@@ -3,10 +3,11 @@ import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
 import { Change, applyChanges, importDiff, manualDiff } from './core/diff';
 import {
-  Project, addEnv, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
+  Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
 } from './core/model';
 import type { FromWebview, ProjectView } from './core/protocol';
 import { SelfWrites, renderTarget } from './core/sync';
+import { gate } from './gate';
 import { SyncPanel } from './panel';
 import { LoadResult, init, isTrackedByGit, load, readTarget, save, targetPath, writeTarget } from './project';
 
@@ -21,7 +22,6 @@ export function activate(ctx: vscode.ExtensionContext): void {
   const watchers = new Map<string, { target: string; w: vscode.FileSystemWatcher }>();
   const folders = (): readonly vscode.WorkspaceFolder[] => vscode.workspace.workspaceFolders ?? [];
   const fail = (e: unknown): void => { void vscode.window.showErrorMessage(errMsg(e)); };
-  const guard = <A extends unknown[]>(f: (...a: A) => Promise<void>) => (...a: A): void => { f(...a).catch(fail); };
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
   status.command = 'syncstage.openPanel';
@@ -35,7 +35,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     return { ...base, status: 'missing' };
   });
 
-  const panel = new SyncPanel(ctx, views, m => handle(m));
+  const confirmed = new Set<string>(); // roots whose git-tracked target was confirmed this session
+  let queue: Promise<void> = Promise.resolve();
+  /** serialize every mutation so overlapping messages never start from a stale project */
+  const enqueue = (f: () => Promise<void>): Promise<void> => (queue = queue.then(f).catch(fail));
+
+  const panel = new SyncPanel(ctx, views, m => enqueue(() => handle(m)));
 
   function updateStatus(): void {
     const ed = vscode.window.activeTextEditor;
@@ -77,7 +82,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       if (s?.status !== 'ok' || watchers.has(root)) continue;
       const target = s.project.schema.target;
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(f, target));
-      const on = (): void => { onTargetChanged(root).catch(fail); };
+      const on = (): void => { void enqueue(() => onTargetChanged(root)); };
       w.onDidChange(on); w.onDidCreate(on);
       watchers.set(root, { target, w });
     }
@@ -99,17 +104,37 @@ export function activate(ctx: vscode.ExtensionContext): void {
     panel.post();
   }
 
-  /** compute → skip if equal → mark self-write BEFORE writing → write */
-  async function syncTarget(root: string, p: Project, mode: 'sync' | 'generate' = 'sync'): Promise<void> {
-    const current = await readTarget(root, p);
-    const next = renderTarget(p, current, mode);
-    if (next === current) return;
-    selfWrites.mark(targetPath(root, p), next);
-    await writeTarget(root, p, next);
+  const gateDeps = (root: string) => ({
+    isTracked: (target: string) => isTrackedByGit(root, target),
+    ask: async (target: string) => {
+      const cont = t('Continue'); const change = t('Change target');
+      const a = await vscode.window.showWarningMessage(
+        t('{0} is tracked by git — secret values would be committed. Continue?', target), { modal: true }, cont, change);
+      return a === cont ? 'continue' as const : a === change ? 'change' as const : undefined;
+    },
+    changeTarget: () => Promise.resolve(vscode.window.showInputBox({ prompt: t('New target file'), value: '.env.local' })),
+  });
+
+  /** compute → skip if equal → git-tracked gate → mark self-write BEFORE writing → write. Undefined = cancelled. */
+  async function syncTarget(root: string, p: Project, mode: 'sync' | 'generate' = 'sync'): Promise<Project | undefined> {
+    let current = await readTarget(root, p);
+    let next = renderTarget(p, current, mode);
+    if (next === current) return p;
+    const q = await gate(confirmed, root, p, gateDeps(root));
+    if (!q) return undefined;
+    if (q !== p) {
+      await save(root, q);
+      current = await readTarget(root, q);
+      next = renderTarget(q, current, mode);
+      if (next === current) return q;
+    }
+    selfWrites.mark(targetPath(root, q), next);
+    await writeTarget(root, q, next);
+    return q;
   }
 
   async function okProject(root: string): Promise<Project> {
-    const s = states.get(root) ?? await load(root);
+    const s = await load(root);
     if (s.status !== 'ok') throw new Error(t('Project is not initialized or its syncstage files are invalid'));
     return s.project;
   }
@@ -136,13 +161,6 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }
   }
 
-  async function warnIfTracked(root: string, p: Project): Promise<void> {
-    const target = p.schema.target;
-    if (await isTrackedByGit(root, target)) {
-      void vscode.window.showWarningMessage(t('{0} is tracked by git — secrets may be committed', target));
-    }
-  }
-
   async function doImport(root: string): Promise<void> {
     const p = await okProject(root);
     const uris = await vscode.window.showOpenDialog({
@@ -155,17 +173,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
   }
 
   async function doInit(root: string): Promise<void> {
-    if ((states.get(root) ?? await load(root)).status !== 'missing') return;
-    const p = await init(root);
+    if ((await load(root)).status !== 'missing') return;
+    const q = await gate(confirmed, root, emptyProject(), gateDeps(root));
+    if (!q) return;
+    const p = await init(root, q);
     const existing = await readTarget(root, p);
     await refresh();
-    await warnIfTracked(root, p);
     if (existing === '') return;
-    const yes = t('Import');
-    const a = await vscode.window.showWarningMessage(t('Import existing {0}?', p.schema.target), { modal: true }, yes);
-    if (a !== yes) return;
     const env = await pickEnv(p);
-    if (env) await importContent(root, p, existing, env);
+    if (!env) return;
+    const yes = t('Import');
+    const a = await vscode.window.showWarningMessage(t('Import existing {0} as {1}?', p.schema.target, env), { modal: true }, yes);
+    if (a === yes) await importContent(root, p, existing, env);
   }
 
   async function doResolve(root: string, accepted: string[]): Promise<void> {
@@ -180,13 +199,14 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   async function handle(m: FromWebview): Promise<void> {
     if (m.type === 'ready') { panel.post(); return; }
+    if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
     const p = await okProject(m.root); // never write for missing/invalid projects
     switch (m.type) {
       case 'import': return doImport(m.root);
       case 'generate': {
         await syncTarget(m.root, p, 'generate');
-        await warnIfTracked(m.root, p);
+        await refresh();
         return;
       }
       case 'addEnv': {
@@ -219,7 +239,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     status,
     vscode.commands.registerCommand('syncstage.openPanel', () => { panel.show(); }),
     vscode.window.onDidChangeActiveTextEditor(updateStatus),
-    vscode.workspace.onDidChangeWorkspaceFolders(guard(async () => { await refresh(); rewatchState(); })),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => { void enqueue(async () => { await refresh(); rewatchState(); }); }),
     { dispose: () => { for (const w of watchers.values()) w.w.dispose(); watchers.clear(); } },
   );
 
@@ -231,7 +251,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
     for (const f of folders()) {
       if (stateWatchers.has(f.uri.fsPath)) continue;
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(f, '.syncstage/*.json'));
-      const on = guard(refresh);
+      const on = (): void => { void enqueue(refresh); };
       w.onDidChange(on); w.onDidCreate(on); w.onDidDelete(on);
       stateWatchers.set(f.uri.fsPath, w);
     }
@@ -239,7 +259,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push({ dispose: () => { for (const w of stateWatchers.values()) w.dispose(); stateWatchers.clear(); } });
 
   rewatchState();
-  guard(refresh)();
+  void enqueue(refresh);
 }
 
 export function deactivate(): void {}

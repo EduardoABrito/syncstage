@@ -33,8 +33,8 @@ td { overflow: hidden; }
 .field { width: 100%; max-width: 32em; min-width: 0; box-sizing: border-box; }
 .picker { margin-bottom: 12px; }
 .picker .field { max-width: 24em; }
-.value-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.value-wrap .field { flex: 1 1 auto; }
+.value-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.value-wrap .field { flex: 1 1 auto; min-width: 6em; }
 .value-wrap .badge { flex: none; margin-left: 0; white-space: nowrap; }
 .badge { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 0.85em; font-family: var(--vscode-font-family); background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
 .badge.warn { background: var(--vscode-inputValidation-warningBackground); color: var(--vscode-editorWarning-foreground); border: 1px solid var(--vscode-inputValidation-warningBorder); }

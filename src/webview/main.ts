@@ -53,7 +53,7 @@ let rendering = false;
 function render(): void {
   const f = document.activeElement;
   const kept = f instanceof HTMLInputElement && f.dataset.ss
-    ? { id: f.dataset.ss, value: f.value, a: f.selectionStart, b: f.selectionEnd } : undefined;
+    ? { id: f.dataset.ss, value: f.value !== f.defaultValue ? f.value : undefined, a: f.selectionStart, b: f.selectionEnd } : undefined;
   rendering = true;
   app.replaceChildren();
   if (projects.length) {
@@ -64,7 +64,7 @@ function render(): void {
   if (kept) {
     const n = Array.from(app.querySelectorAll('input')).find((i) => i.dataset.ss === kept.id);
     if (n) {
-      n.value = kept.value;
+      if (kept.value !== undefined) n.value = kept.value; // only user-typed text; never a stale untouched value
       n.focus();
       try { n.setSelectionRange(kept.a, kept.b); } catch { /* input type without selection */ }
     }
@@ -79,6 +79,7 @@ function renderPicker(active: ProjectView): HTMLElement {
   input.setAttribute('list', 'ss-projects');
   input.placeholder = t('Search project');
   input.dataset.ss = 'picker';
+  input.defaultValue = active.name;
   input.value = active.name;
   const list = el('datalist');
   list.id = 'ss-projects';
@@ -87,11 +88,14 @@ function renderPicker(active: ProjectView): HTMLElement {
     o.value = p.name;
     list.append(o);
   }
-  input.addEventListener('input', () => {
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('change', () => {
     const hit = projects.find((p) => p.name === input.value);
     if (hit && hit.root !== tab) { tab = hit.root; save(); render(); }
   });
-  input.addEventListener('blur', () => { if (!rendering) input.value = (projects.find((p) => p.root === tab) ?? active).name; });
+  input.addEventListener('blur', () => {
+    if (!rendering && !projects.some((p) => p.name === input.value)) input.value = (projects.find((p) => p.root === tab) ?? active).name;
+  });
   wrap.append(input, list);
   return wrap;
 }
@@ -212,8 +216,9 @@ function renderRow(v: ProjectView, key: string, sel: string, byEnv: Record<strin
   let old = Object.hasOwn(byEnv, sel) ? byEnv[sel] : '';
   const input = field(el('input'));
   input.type = eye ? 'text' : 'password';
+  input.defaultValue = old;
   input.value = old;
-  input.dataset.ss = `value\0${v.root}\0${key}`;
+  input.dataset.ss = `value\0${v.root}\0${key}\0${sel}`;
   const commit = (): void => {
     if (rendering || input.value === old) return;
     if (input.value === '' && old !== '') { input.value = old; return; } // clearing lives in the editor

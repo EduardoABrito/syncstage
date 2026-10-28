@@ -4,7 +4,7 @@ VS Code extension that keeps per-project `.env` values for each environment (dev
 
 ## What it does
 
-- Define environments and keys per project in a panel (command: `syncstage: Open panel`).
+- Define environments and keys per project in a panel (command: `syncstage: Open panel`, or click the syncstage icon in the activity bar).
 - Choose an environment per key, or switch every key at once with "All keys →"; the target file is updated immediately.
 - Import an existing `.env` with a conflict review, or generate the target from the schema.
 - Edits made to the target outside syncstage are detected and offered for review.

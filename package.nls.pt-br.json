@@ -1,4 +1,6 @@
 {
   "command.openPanel": "syncstage: Abrir painel",
+  "view.home": "Projetos",
+  "view.welcome": "Gerencie valores do .env por ambiente.\n[Abrir painel](command:syncstage.openPanel)",
   "description": "Mantenha valores .env por projeto para cada ambiente e alterne entre eles."
 }

@@ -1,4 +1,6 @@
 {
   "command.openPanel": "syncstage: Open panel",
+  "view.home": "Projects",
+  "view.welcome": "Manage .env values per environment.\n[Open panel](command:syncstage.openPanel)",
   "description": "Keep per-project .env values for each environment and switch between them."
 }

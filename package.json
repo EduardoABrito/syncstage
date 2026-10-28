@@ -33,6 +33,19 @@
     "typescript": "^5.9.3"
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "syncstage", "title": "syncstage", "icon": "media/syncstage.svg" }
+      ]
+    },
+    "views": {
+      "syncstage": [
+        { "id": "syncstage.home", "name": "%view.home%" }
+      ]
+    },
+    "viewsWelcome": [
+      { "view": "syncstage.home", "contents": "%view.welcome%" }
+    ],
     "commands": [
       {
         "command": "syncstage.openPanel",

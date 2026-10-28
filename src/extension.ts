@@ -249,9 +249,18 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }
   }
 
+  // empty tree: only the viewsWelcome button shows; opening the sidebar opens the panel tab
+  const home = vscode.window.createTreeView<never>('syncstage.home', {
+    treeDataProvider: { getChildren: () => [], getTreeItem: (x: never) => x },
+  });
+  // the first click activates the extension, so the view may already be visible
+  if (home.visible) void vscode.commands.executeCommand('syncstage.openPanel');
+
   ctx.subscriptions.push(
     status,
     vscode.commands.registerCommand('syncstage.openPanel', () => { panel.show(); }),
+    home,
+    home.onDidChangeVisibility(e => { if (e.visible) void vscode.commands.executeCommand('syncstage.openPanel'); }),
     vscode.window.onDidChangeActiveTextEditor(updateStatus),
     vscode.workspace.onDidChangeWorkspaceFolders(() => { void enqueue(async () => { await refresh(); rewatchState(); }); }),
     { dispose: () => { for (const w of watchers.values()) w.w.dispose(); watchers.clear(); } },

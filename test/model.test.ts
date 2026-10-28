@@ -43,3 +43,17 @@ test('validate rejects wrong shapes', () => {
   assert.throws(() => validate({ version: 1, environments: 'x' }, 'schema'));
   assert.ok(validate(emptyProject().schema, 'schema'));
 });
+test('prototype members do not leak through env/key maps', () => {
+  const base = addKey(emptyProject(['dev', 'constructor']), 'A', 'v', 'dev');
+  const r = renameEnv(base, 'constructor', 'x');
+  assert.equal(Object.hasOwn(r.values.values.A, 'x'), false);
+  assert.doesNotThrow(() => addKey(r, 'B', 'w', 'dev'));
+  const sel = selectAll(base, 'constructor');
+  assert.deepEqual(resolve(sel).missing, ['A']);
+  assert.equal(resolve(sel).values.size, 0);
+});
+test('rejects __proto__ key and prototype-member env names', () => {
+  assert.throws(() => addKey(emptyProject(), '__proto__', 'v', 'dev'));
+  assert.throws(() => addEnv(emptyProject(), 'toString'));
+  assert.throws(() => renameEnv(emptyProject(), 'dev', 'constructor'));
+});

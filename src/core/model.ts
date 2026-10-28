@@ -26,7 +26,7 @@ function assertKey(p: Project, key: string): void {
 }
 function assertNewEnvName(p: Project, env: string): void {
   if (!env.trim()) throw new Error('Environment name must not be empty');
-  if (p.schema.environments.includes(env)) throw new Error(`Environment already exists: ${env}`);
+  if (p.schema.environments.includes(env) || env in Object.prototype) throw new Error(`Invalid or existing environment: ${env}`);
 }
 
 export function defaultEnv(p: Project): string {
@@ -61,7 +61,7 @@ export function setKeyValues(p: Project, key: string, byEnv: Record<string, stri
   assertKey(p, key);
   for (const e of Object.keys(byEnv)) assertEnv(p, e);
   const n = clone(p);
-  const cur = { ...(n.values.values[key] ?? {}) };
+  const cur = { ...(Object.hasOwn(n.values.values, key) ? n.values.values[key] : {}) };
   for (const [e, v] of Object.entries(byEnv)) {
     if (v === '') delete cur[e];
     else cur[e] = v;
@@ -106,7 +106,7 @@ export function renameEnv(p: Project, from: string, to: string): Project {
   n.schema.environments = n.schema.environments.map(e => (e === from ? to : e));
   for (const k of Object.keys(n.values.selected)) if (n.values.selected[k] === from) n.values.selected[k] = to;
   for (const byEnv of Object.values(n.values.values)) {
-    if (from in byEnv) { byEnv[to] = byEnv[from]; delete byEnv[from]; }
+    if (Object.hasOwn(byEnv, from)) { byEnv[to] = byEnv[from]; delete byEnv[from]; }
   }
   return n;
 }
@@ -128,8 +128,9 @@ export function resolve(p: Project): { values: Map<string, string>; missing: str
   const values = new Map<string, string>();
   const missing: string[] = [];
   for (const k of p.schema.keys) {
-    const env = p.values.selected[k];
-    const v = env === undefined ? undefined : p.values.values[k]?.[env];
+    const env = Object.hasOwn(p.values.selected, k) ? p.values.selected[k] : undefined;
+    const byEnv = Object.hasOwn(p.values.values, k) ? p.values.values[k] : undefined;
+    const v = env !== undefined && byEnv && Object.hasOwn(byEnv, env) ? byEnv[env] : undefined;
     if (v === undefined) missing.push(k);
     else values.set(k, v);
   }

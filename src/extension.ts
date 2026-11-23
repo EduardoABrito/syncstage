@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { parse, toMap } from './core/dotenv';
-import { Config, exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, workspaceKeys } from './core/config';
+import { Config, exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, replaceConfig, workspaceKeys } from './core/config';
 import { Change, acceptedChanges, applyChanges, importDiff, manualDiff } from './core/diff';
 import {
   Project, addEnv, emptyProject, addKey, defaultEnv, removeEnv, removeKey, renameEnv, resolve, selectAll, selectEnv, setKeyValues,
@@ -319,10 +319,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     void vscode.window.showInformationMessage(t('Workspace config exported to {0} ({1} projects)', uri.fsPath, items.length));
   }
 
-  async function doImportWorkspace(): Promise<void> {
+  /** force: matched projects become exactly the file's config (values not in the file are dropped; undo restores) */
+  async function doImportWorkspace(force = false): Promise<void> {
+    const title = force ? t('Force import workspace') : t('Import workspace');
     const first = folders()[0]?.uri;
     const uris = await vscode.window.showOpenDialog({
-      canSelectMany: false, defaultUri: first, filters: { JSON: ['json'] }, title: t('Import workspace'),
+      canSelectMany: false, defaultUri: first, filters: { JSON: ['json'] }, title,
     });
     if (!uris?.length) return;
     let entries: ReturnType<typeof parseWorkspaceConfig>;
@@ -336,6 +338,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     const reasons: Record<string, string> = {
       'not found': t('not found'), ambiguous: t('ambiguous'), cancelled: t('cancelled'), pending: t('pending review'), invalid: t('invalid project'),
     };
+    if (force) {
+      const yes = t('Overwrite');
+      const a = await vscode.window.showWarningMessage(
+        t('Overwrite the whole config of {0} projects with the file? Keys, environments and values not in the file are removed.', matched.size), { modal: true }, yes);
+      if (a !== yes) return;
+    }
     const skips = skipped.map(x => ({ key: x.key, reason: reasons[x.reason] }));
     const review: string[] = [];
     let done = 0;
@@ -344,7 +352,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
       if (root === undefined) continue;
       try {
         if (!(await mutable(root))) { skips.push({ key, reason: reasons.cancelled }); continue; } // per-project gate
-        if ((await applyConfig(root, config)).length) review.push(projects.find(x => x.root === root)?.name ?? key);
+        if (force) await finishImport(root, replaceConfig(await okProject(root), config), []);
+        else if ((await applyConfig(root, config)).length) review.push(projects.find(x => x.root === root)?.name ?? key);
         done++;
       } catch (e) {
         skips.push({ key, reason: pending.get(root)?.kind === 'manual' ? reasons.pending : `${reasons.invalid}: ${errMsg(e)}` });
@@ -405,7 +414,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   async function handle(m: FromWebview): Promise<void> {
     if (m.type === 'ready') { panel.post(); return; }
     if (m.type === 'exportWorkspace') return doExportWorkspace(); // read-only, no root
-    if (m.type === 'importWorkspace') return doImportWorkspace(); // each project goes through mutable()
+    if (m.type === 'importWorkspace') return doImportWorkspace(m.force); // each project goes through mutable()
     if (!states.has(m.root)) throw new Error(t('Unknown project folder'));
     if (m.type === 'init') return doInit(m.root);
     if (m.type === 'exportConfig') return doExportConfig(m.root); // read-only: must not persist a draft

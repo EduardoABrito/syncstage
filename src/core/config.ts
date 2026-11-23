@@ -71,6 +71,16 @@ export function mergeConfig(p: Project, cfg: Config): { project: Project; confli
   return { project, conflicts };
 }
 
+/** Force import: the project becomes exactly the config (envs, keys, selection, values); only its target is kept. */
+export function replaceConfig(p: Project, cfg: Config): Project {
+  const selected: Record<string, string> = {};
+  for (const k of cfg.keys) selected[k] = own(cfg.selected, k) ?? cfg.environments[0];
+  return {
+    schema: { ...p.schema, environments: [...cfg.environments], keys: [...cfg.keys] },
+    values: { ...p.values, selected, values: structuredClone(cfg.values), unregistered: p.values.unregistered.filter(k => !cfg.keys.includes(k)) },
+  };
+}
+
 // ---- workspace-level file: { syncstage: 1, workspace: { <folder name>: <per-project body> } } ----
 
 const MAX_PROJECTS = 200;
@@ -92,7 +102,7 @@ export function workspaceKeys(projects: WsProject[]): Map<string, string> {
   return out;
 }
 
-/** Maps file entries onto projects: exact rel first, then unique folder name. A root is claimed once. */
+/** Maps file entries onto projects: exact rel first, then the longest unique path suffix (any depth). A root is claimed once. */
 export function matchWorkspace(entryKeys: string[], projects: WsProject[]):
   { matched: Map<string, string>; skipped: { key: string; reason: SkipReason }[] } {
   const matched = new Map<string, string>();
@@ -106,8 +116,13 @@ export function matchWorkspace(entryKeys: string[], projects: WsProject[]):
   for (const k of entryKeys) {
     if (matched.has(k)) continue;
     if (projects.filter(p => p.rel === k).length > 1) { skipped.push({ key: k, reason: 'ambiguous' }); continue; }
-    const name = k.split(/[\\/]/).pop() as string;
-    const cands = projects.filter(p => basename(p.root) === name);
+    // path-suffix match, longest first: the project may sit at any depth in this workspace
+    const seg = k.split(/[\\/]/).filter(Boolean);
+    let cands: WsProject[] = [];
+    for (let n = seg.length; n > 0 && !cands.length; n--) {
+      const suf = seg.slice(-n);
+      cands = projects.filter(p => { const ps = p.root.split(/[\\/]/); return ps.length >= n && suf.every((x, i) => ps[ps.length - n + i] === x); });
+    }
     if (cands.length === 0) skipped.push({ key: k, reason: 'not found' });
     else if (cands.length > 1 || claimed.has(cands[0].root)) skipped.push({ key: k, reason: 'ambiguous' });
     else { matched.set(k, cands[0].root); claimed.add(cands[0].root); }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addEnv, addKey, emptyProject, selectEnv, setKeyValues } from '../src/core/model';
-import { exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, workspaceKeys } from '../src/core/config';
+import { exportConfig, exportWorkspace, matchWorkspace, mergeConfig, parseConfig, parseWorkspaceConfig, replaceConfig, workspaceKeys } from '../src/core/config';
 
 const sample = () => {
   let p = addEnv(emptyProject(), 'prod');
@@ -202,4 +202,20 @@ test('matchWorkspace: duplicate rel is ambiguous', () => {
   const r = matchWorkspace(['app'], [P('/x/app', 'app'), P('/y/app', 'app')]);
   assert.equal(r.matched.size, 0);
   assert.deepEqual(r.skipped, [{ key: 'app', reason: 'ambiguous' }]);
+});
+
+test('matchWorkspace: project at a different depth matches by longest unique path suffix', () => {
+  const deep = [P('/a/apps/Admin/api', 'apps/Admin/api'), P('/a/libs/Shop/api', 'libs/Shop/api')];
+  const r = matchWorkspace(['Admin/api', 'x/y/Shop/api'], deep);
+  assert.equal(r.matched.get('Admin/api'), '/a/apps/Admin/api');
+  assert.equal(r.matched.get('x/y/Shop/api'), '/a/libs/Shop/api');
+});
+
+test('replaceConfig: project becomes exactly the config, target kept', () => {
+  const p = { ...sample(), schema: { ...sample().schema, target: 'x/.env.local' } };
+  const cfg = parseConfig({ syncstage: 1, environments: ['dev'], keys: ['Z'], selected: {}, values: { Z: { dev: 'z' } } });
+  const r = replaceConfig(p, cfg);
+  assert.deepEqual(r.schema, { version: 1, target: 'x/.env.local', environments: ['dev'], keys: ['Z'] });
+  assert.deepEqual(r.values.values, { Z: { dev: 'z' } });
+  assert.deepEqual(r.values.selected, { Z: 'dev' });
 });

@@ -13,7 +13,7 @@ export type ToWebview = { type: 'state'; projects: ProjectView[]; strings: Recor
 export type FromWebview =
   | { type: 'ready' }
   | { type: 'exportWorkspace' }
-  | { type: 'importWorkspace' } // workspace-wide: no root
+  | { type: 'importWorkspace'; force?: boolean } // workspace-wide: no root; force = overwrite instead of merge
   | { type: 'init' | 'import' | 'generate' | 'addEnv' | 'exportConfig' | 'importConfig' | 'undo' | 'redo'; root: string }
   | { type: 'renameEnv' | 'removeEnv'; root: string; env: string }
   | { type: 'select'; root: string; key: string; env: string }

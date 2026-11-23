@@ -68,7 +68,7 @@ function render(): void {
     if (!projects.some((p) => p.root === tab)) tab = projects[0].root;
     const active = projects.find((p) => p.root === tab) as ProjectView;
     const ws = el('div', 'actions');
-    ws.append(button(t('Import workspace'), () => send({ type: 'importWorkspace' })), button(t('Export workspace'), () => send({ type: 'exportWorkspace' })));
+    ws.append(button(t('Import workspace'), () => send({ type: 'importWorkspace' })), button(t('Force import workspace'), () => send({ type: 'importWorkspace', force: true })), button(t('Export workspace'), () => send({ type: 'exportWorkspace' })));
     app.append(ws, renderPicker(active), renderProject(active));
   }
   if (kept) {
